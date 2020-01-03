@@ -23,5 +23,6 @@
 )]
 #![forbid(missing_docs, unused_extern_crates, unused_imports)]
 
+#[macro_use]
 pub mod error;
-pub mod memory;
+pub mod ffi;

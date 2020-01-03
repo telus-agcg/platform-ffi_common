@@ -7,10 +7,10 @@
 //! that error as a "string" (`*const c_char`).
 //!
 
-use std::{cell::RefCell, ffi::CString, os::raw::c_char};
+use std::cell::RefCell;
 
 thread_local! {
-    static LAST_ERROR: RefCell<Option<String>> = RefCell::new(None);
+    pub(crate) static LAST_ERROR: RefCell<Option<String>> = RefCell::new(None);
 }
 
 /// Set the stored error message.
@@ -19,9 +19,9 @@ thread_local! {
 /// FFI-specific code) should cause the function to return something that indicates to the client
 /// that an error occurred, and to log a description of that error here.
 ///
-pub fn set_last_err_msg(msg: String) {
+pub fn set_last_err_msg(msg: &str) {
     LAST_ERROR.with(|last_error| {
-        *last_error.borrow_mut() = Some(msg);
+        *last_error.borrow_mut() = Some(msg.to_string());
     });
 }
 
@@ -37,39 +37,37 @@ pub fn clear_last_err_msg() {
     });
 }
 
-/// Get the last error message stored by the library.
+/// Internal macro for unwrapping a value *or* setting the error to the error message and returning
+/// a null pointer.
 ///
-/// Note that as with all other references to string data originating in Rust, clients *must* call
-/// `free_rust_string` with this pointer once its data has been copied into client-owned memory.
-///
-#[no_mangle]
-pub extern "C" fn get_last_err_msg() -> *const c_char {
-    let mut msg: Option<String> = None;
-    LAST_ERROR.with(|last_error| {
-        msg = last_error.borrow().clone();
-    });
-    match msg {
-        Some(str) => match CString::new(str) {
-            Ok(ffi_string) => ffi_string.into_raw(),
-            Err(why) => {
-                set_last_err_msg(why.to_string());
-                std::ptr::null()
+#[macro_export]
+macro_rules! try_or_set_error {
+    ($expr:expr, $return_expr:expr) => {
+        match $expr {
+            Ok(val) => val,
+            Err(error) => {
+                $crate::error::set_last_err_msg(error.to_string().as_str());
+                return $return_expr;
             }
-        },
-        None => std::ptr::null(),
-    }
+        }
+    };
+
+    ($expr:expr) => {
+        try_or_set_error!($expr, std::ptr::null())
+    };
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ffi;
     use std::ffi::CStr;
 
     #[test]
-    fn can_get_error() {
+    fn can_set_error() {
         let error = "dummy error";
-        set_last_err_msg(error.to_string());
-        let result = get_last_err_msg();
+        set_last_err_msg(error);
+        let result = ffi::get_last_err_msg();
         let result_c: &CStr = unsafe { CStr::from_ptr(result) };
         let returned_error = result_c.to_str().expect("Failed to get str from CStr");
         assert_eq!(error, returned_error);
@@ -77,9 +75,9 @@ mod tests {
 
     #[test]
     fn can_clear_error() {
-        let error = "dummy error".to_string();
+        let error = "dummy error";
         set_last_err_msg(error);
         clear_last_err_msg();
-        assert_eq!(std::ptr::null(), get_last_err_msg());
+        assert_eq!(std::ptr::null(), ffi::get_last_err_msg());
     }
 }
