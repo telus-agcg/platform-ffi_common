@@ -10,7 +10,7 @@ publish = ["agrian-registry"]
 [dependencies]
 
 [build-dependencies]
-cbindgen = "0.9.1"
+cbindgen = "0.13"
 
 [lib]
 crate-type = ["staticlib", "rlib"]
