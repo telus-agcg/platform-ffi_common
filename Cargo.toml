@@ -1,16 +1,5 @@
-[package]
-name = "ffi_common"
-version = "0.1.1"
-authors = ["Nicholas Smillie <nicholas@agrian.com>"]
-edition = "2018"
-publish = ["agrian-registry"]
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]
-
-[build-dependencies]
-cbindgen = "0.13"
-
-[lib]
-crate-type = ["staticlib", "rlib"]
+[workspace]
+members = [
+    "ffi_common",
+    "ffi_derive",
+]
