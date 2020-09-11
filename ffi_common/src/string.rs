@@ -4,7 +4,6 @@
 
 #![allow(clippy::module_name_repetitions)]
 
-use crate::error;
 use std::{
     ffi::{CStr, CString},
     mem::ManuallyDrop,
@@ -13,15 +12,16 @@ use std::{
 use uuid::Uuid;
 
 /// An FFI-safe representation of a collection of string data. Use to communicate a `Vec<String>`,
-/// `Vec<UUID::Uuid>`, etc. across the FFI boundary.
+/// `Vec<uuid::Uuid>`, etc. across the FFI boundary.
 ///
 /// This can also express an `Option<Vec<String>>` with a null pointer and a len and capacity of 0.
 /// ```
+/// use ffi_common::string::FFIArrayString;
 /// FFIArrayString {
 ///     ptr: std::ptr::null(),
 ///     len: 0,
 ///     cap: 0,
-/// }
+/// };
 /// ```
 ///
 /// FFI consumers should therefore make sure that the pointer is not null (although our generated
@@ -50,6 +50,7 @@ use uuid::Uuid;
 /// contents into native memory up front.
 ///
 #[repr(C)]
+#[allow(missing_copy_implementations)]
 #[derive(Clone, Debug)]
 pub struct FFIArrayString {
     #[doc = "Pointer to the first element in the array."]
@@ -97,16 +98,17 @@ pub unsafe extern "C" fn ffi_array_string_init(
             let c = CStr::from_ptr(x).to_str().unwrap().to_string();
             v.push(c);
         }
-        (&v).into()
+        v.as_slice().into()
     }
 }
 
-impl<T: ToString> From<&Vec<T>> for FFIArrayString {
+impl<T: ToString> From<&[T]> for FFIArrayString {
     /// Convenience for converting any string-like vec into an `FFIArrayString`.
     ///
-    fn from(v_s: &Vec<T>) -> Self {
+    fn from(slice: &[T]) -> Self {
         let v: ManuallyDrop<Vec<*const c_char>> = ManuallyDrop::new(
-            v_s.iter()
+            slice
+                .iter()
                 .map(|s| {
                     let c_string = try_or_set_error!(CString::new(s.to_string()));
                     let c: *const c_char = c_string.into_raw();
@@ -122,11 +124,11 @@ impl<T: ToString> From<&Vec<T>> for FFIArrayString {
     }
 }
 
-impl<T: ToString> From<&Option<Vec<T>>> for FFIArrayString {
+impl<T: ToString> From<Option<&[T]>> for FFIArrayString {
     /// Convenience for converting any string-like vec into an `FFIArrayString`.
     ///
-    fn from(opt: &Option<Vec<T>>) -> Self {
-        opt.as_ref().map_or(
+    fn from(opt: Option<&[T]>) -> Self {
+        opt.map_or(
             Self {
                 ptr: std::ptr::null(),
                 len: 0,
@@ -195,24 +197,8 @@ impl From<FFIArrayString> for Option<Vec<Uuid>> {
         if array.ptr.is_null() {
             None
         } else {
-            unsafe {
-                let v = Vec::from_raw_parts(array.ptr as *mut *const c_char, array.len, array.cap);
-                Some(
-                    v.into_iter()
-                        .map(|s| {
-                            Uuid::parse_str(CString::from_raw(s as *mut c_char).to_str().unwrap())
-                                .unwrap()
-                        })
-                        .collect(),
-                )
-            }
+            Some(array.into())
         }
-    }
-}
-
-impl Drop for FFIArrayString {
-    fn drop(&mut self) {
-        println!("> Dropping string array: {:?}", self);
     }
 }
 
@@ -228,11 +214,12 @@ impl Drop for FFIArrayString {
 ///
 /// You **must not** access `array` after passing it to `free_ffi_array_string`.
 ///
-/// Null pointers will be a no-op.
+/// It is safe to call this method with an `array` whose `ptr` is null; we won't double-free or free
+/// unallocated memory if, for example, you pass an array that represents the `None` variant of an
+/// `Option<Vec<T>>`.
 ///
 #[no_mangle]
 pub extern "C" fn free_ffi_array_string(array: FFIArrayString) {
-    error::clear_last_err_msg();
     if array.ptr.is_null() {
         return;
     }
@@ -242,6 +229,21 @@ pub extern "C" fn free_ffi_array_string(array: FFIArrayString) {
             free_rust_string(s);
         }
     }
+}
+
+/// Converts a string to a raw, unowned pointer.
+///
+/// If there's a previous error, it will be cleared when calling this. If an error occurs, this will
+/// return std::ptr::null(), and you can check the error with `error::get_last_err_msg()`.
+///
+#[macro_export]
+macro_rules! ffi_string {
+    ($string:expr) => {{
+        ffi_common::error::clear_last_err_msg();
+        let c_string = try_or_set_error!(CString::new($string));
+        let c: *const c_char = c_string.into_raw();
+        c
+    }};
 }
 
 /// Free a string that was created in Rust.
@@ -256,7 +258,6 @@ pub extern "C" fn free_ffi_array_string(array: FFIArrayString) {
 ///
 #[no_mangle]
 pub extern "C" fn free_rust_string(string: *const c_char) {
-    error::clear_last_err_msg();
     unsafe {
         if string.is_null() {
             return;
@@ -272,8 +273,8 @@ mod tests {
 
     #[test]
     fn can_free_string() {
-        error::set_last_err_msg("testy test test");
-        let error = error::get_last_err_msg();
+        crate::error::set_last_err_msg("testy test test");
+        let error = crate::error::get_last_err_msg();
         let error_bytes = unsafe { CStr::from_ptr(error).to_bytes() };
         assert!(!error_bytes.is_empty());
         free_rust_string(error);

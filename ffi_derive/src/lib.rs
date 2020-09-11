@@ -79,16 +79,16 @@
 //!
 //! With more complicated structs (the primary focus of this library), you can similarly use a
 //! feature to control when the type is built with `ffi_derive`.
-//! 
+//!
 //! Typealiases are supported, with the caveat that you have to provide a path to the file(s) in
 //! which any typealiases referenced in the definition of this type are defined (see
 //! `ffi(alias_paths("src/ids.rs"))` in the example below; if `NativeStructId` was an alias over
 //! `Uuid` defined in a file at that path (relative to the root of the crate), we'd figure out what
 //! type to treat that field as for the purposes of FFI.)
-//! 
+//!
 //! Custom types that are safe to use directly in FFI can be marked `ffi(raw)` (see `enum_variant`
-//! in the example below). 
-//! ```
+//! in the example below).
+//! ```ignore
 //! #[cfg_attr(
 //!     feature = "cffi",
 //!     derive(ffi_derive::FFI),
@@ -105,8 +105,6 @@
 //!     pub enum_variant: NativeEnum,
 //! }
 //! ```
-//!
-//! [Additional examples, including the expanded forms, can be found here.](../example.md)
 //!
 
 #![warn(
@@ -135,17 +133,8 @@ mod struct_ffi;
 
 use heck::SnakeCase;
 use proc_macro::TokenStream;
-use syn::{Data, DeriveInput, Ident};
-
-// TODOs
-// * Swift codegen
-// * Prototype network API (different crate, but needs to work with FFI).
-// * Clean up imports with a prelude
-// * Look in to using https://doc.rust-lang.org/std/ptr/struct.NonNull.html for non-nullable
-// pointers. Seems like it might let us represent optional boxed types with `Option<NonNull<T>>`
-// instead of defining an `OptionT` struct for it.
-// * Improve parsing (see `parsing.rs`).
-// * Improve generated doc comments (copy the Rust field docs into the FFI modules).
+use quote::format_ident;
+use syn::{Data, DeriveInput};
 
 /// Derive an FFI for a native type definition.
 #[proc_macro_derive(FFI, attributes(ffi))]
@@ -158,10 +147,7 @@ pub fn ffi_derive(input: TokenStream) -> TokenStream {
 
 fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
     let type_name = &ast.ident;
-    let module_name = Ident::new(
-        &[&type_name.to_string().to_snake_case(), "_ffi"].concat(),
-        type_name.span(),
-    );
+    let module_name = format_ident!("{}_ffi", &type_name.to_string().to_snake_case());
     match &ast.data {
         Data::Struct(data) => {
             // Get the file paths from the attribute args, then build a hash map for resolving type aliases.

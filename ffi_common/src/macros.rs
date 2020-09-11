@@ -5,16 +5,15 @@
 /// Generates the following:
 /// 1. A repr(C) struct with a pointer to an array (whose elements are repr(C) value types), its
 /// length, and its capacity.
-/// 1. `From` impls for converting between `&Vec` of those element types and this new struct.
+/// 1. `From` impls for converting between `&[T]` of those element types and this new struct.
 /// 1. A function for freeing an array of this type.
 ///
 /// Usage looks like:
-/// ```
+/// ```ignore
 /// declare_value_type_array_struct!(u8);
 /// let v: Vec<u8> = vec![1,2,3];
-/// let ffi: FFIArrayU8 = (&v).into();
+/// let ffi = FFIArrayU8::from(&*v);
 /// ```
-
 ///
 /// This is intended to be used with numeric primitives, but it may be useful if there are other
 /// collections of repr(C) types that we want to pass through the FFI.
@@ -39,6 +38,7 @@ when you've copied it into native memory, displayed it, whatever you're doing on
 the FFI boundary) so we can take care of those steps.
             """]
             #[repr(C)]
+            #[allow(missing_copy_implementations)]
             #[derive(Clone, Debug)]
             pub struct [<FFIArray $t:camel>] {
                 #[doc = "Pointer to the first element in the array."]
@@ -77,12 +77,12 @@ simplify memory management.
                     let e = *ptr.offset(i);
                     v.push(e);
                 }
-                (&v).into()
+                (&*v).into()
             }
 
-            impl From<&Vec<$t>> for [<FFIArray $t:camel>] {
-                fn from(vec: &Vec<$t>) -> Self {
-                    let v: std::mem::ManuallyDrop<Vec<$t>> = std::mem::ManuallyDrop::new(vec.clone());
+            impl From<&[$t]> for [<FFIArray $t:camel>] {
+                fn from(slice: &[$t]) -> Self {
+                    let v: std::mem::ManuallyDrop<Vec<$t>> = std::mem::ManuallyDrop::new(slice.to_vec());
                     let len = v.len();
                     let ptr = v.as_ptr();
                     let cap = v.capacity();
@@ -91,9 +91,9 @@ simplify memory management.
                 }
             }
 
-            impl From<&Option<Vec<$t>>> for [<FFIArray $t:camel>] {
-                fn from(opt: &Option<Vec<$t>>) -> Self {
-                    opt.as_ref().map_or(
+            impl From<Option<&[$t]>> for [<FFIArray $t:camel>] {
+                fn from(opt: Option<&[$t]>) -> Self {
+                    opt.map_or(
                         Self {
                             ptr: std::ptr::null(),
                             len: 0,
@@ -127,12 +127,6 @@ simplify memory management.
                 }
             }
 
-            impl Drop for [<FFIArray $t:camel>] {
-                fn drop(&mut self) {
-                    println!("> Dropping value type array: {:?}", self);
-                }
-            }
-
             #[doc = """
 Pass an FFI array to this method to allow Rust to reclaim ownership of the object so that it can be safely deallocated.
 
@@ -142,11 +136,12 @@ We're assuming that the memory in the `array` you give us was allocated by Rust.
 
 You **must not** access `array` after passing it to this method.
 
-Null pointers will be a no-op.
+It is safe to call this method with an `array` whose `ptr` is null; we won't double-free or free 
+unallocated memory if, for example, you pass an array that represents the `None` variant of an 
+`Option<Vec<T>>`.
             """]
             #[no_mangle]
             pub extern "C" fn [<free_ffi_array_ $t:snake>](array: [<FFIArray $t:camel>]) {
-                error::clear_last_err_msg();
                 if array.ptr.is_null() {
                     return;
                 }
@@ -165,8 +160,8 @@ Null pointers will be a no-op.
                 pub value: $t,
             }
 
-            impl From<&Option<$t>> for [<Option $t:camel>] {
-                fn from(opt: &Option<$t>) -> Self {
+            impl From<Option<&$t>> for [<Option $t:camel>] {
+                fn from(opt: Option<&$t>) -> Self {
                     match opt {
                         Some(s) => Self {
                             has_value: true,
@@ -198,24 +193,25 @@ Null pointers will be a no-op.
 /// length, and its capacity. These elements will be visible across the FFI boundary as opaque
 /// pointers, and they will not be deallocated until the struct is passed back to the matching free
 /// function (3).
-/// 1. `From` impls for converting between `&Vec` of those element types and this new struct.
+/// 1. `From` impls for converting between `&[T]` of those element types and this new struct.
 /// 1. A function for freeing an array of this type.
 ///
 /// Usage looks like:
 /// ```
+/// # #[macro_use]
+/// # extern crate ffi_common;
+/// # fn main() {
 /// #[derive(Debug, Clone)]
 /// pub struct Foo {
 ///     pub bar: i32,
 /// }
-/// 
-/// declare_opaque_type_array_struct!(Foo);
-/// 
-/// let v: Vec<Foo> = vec![Foo { bar: 1 }, Foo { bar: 2 }, Foo { bar: 3 }];
-/// let ffi: FFIArrayFoo = (&v).into();
-/// ```
 ///
-/// This is intended to be used with numeric primitives, but it may be useful if there are other
-/// collections of repr(C) types that we want to pass through the FFI.
+/// declare_opaque_type_array_struct!(Foo);
+///
+/// let v: Vec<Foo> = vec![Foo { bar: 1 }, Foo { bar: 2 }, Foo { bar: 3 }];
+/// let ffi = FFIArrayFoo::from(&*v);
+/// # }
+/// ```
 ///
 #[macro_export]
 macro_rules! declare_opaque_type_array_struct {
@@ -276,19 +272,13 @@ simplify memory management.
                     let e = *ptr.offset(i);
                     v.push((&*e).clone());
                 }
-                (&v).into()
+                v.as_slice().into()
             }
 
-            impl Drop for [<FFIArray $t:camel>] {
-                fn drop(&mut self) {
-                    println!("> Dropping reference type array: {:?}", self);
-                }
-            }
-
-            impl From<&Vec<$t>> for [<FFIArray $t:camel>] {
-                fn from(vec: &Vec<$t>) -> Self {
+            impl From<&[$t]> for [<FFIArray $t:camel>] {
+                fn from(slice: &[$t]) -> Self {
                     let v: std::mem::ManuallyDrop<Vec<*const $t>> = std::mem::ManuallyDrop::new(
-                        vec.iter()
+                        slice.iter()
                             .map(|e| {
                                 let boxed: *const $t = Box::into_raw(Box::new(e.clone()));
                                 boxed
@@ -303,9 +293,9 @@ simplify memory management.
                 }
             }
 
-            impl From<&Option<Vec<$t>>> for [<FFIArray $t:camel>] {
-                fn from(opt: &Option<Vec<$t>>) -> Self {
-                    opt.as_ref().map_or(
+            impl From<Option<&[$t]>> for [<FFIArray $t:camel>] {
+                fn from(opt: Option<&[$t]>) -> Self {
+                    opt.map_or(
                         Self {
                             ptr: std::ptr::null(),
                             len: 0,
@@ -351,11 +341,12 @@ We're assuming that the memory in the `array` you give us was allocated by Rust.
 
 You **must not** access `array` after passing it to this method.
 
-Null pointers will be a no-op.
+It is safe to call this method with an `array` whose `ptr` is null; we won't double-free or free 
+unallocated memory if, for example, you pass an array that represents the `None` variant of an 
+`Option<Vec<T>>`.
             """]
             #[no_mangle]
             pub extern "C" fn [<free_ffi_array_ $t:snake>](array: [<FFIArray $t:camel>]) {
-                error::clear_last_err_msg();
                 if array.ptr.is_null() {
                     return;
                 }

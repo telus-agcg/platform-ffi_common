@@ -10,10 +10,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Add `datetime.rs` for representing timestamps across the FFI boundary.
-- Add `macros.rs` for generating an FFI for primitive and opaque types.
-- Use those macros to generate an FFI for numeric primitives, strings, and `DateTime`s.
+- Add `macros.rs` for generating FFI types and impls for primitive and opaque types.
+- Use those macros to generate FFI types and impls for numeric primitives, strings, and `DateTime`s.
 - Add `FFIArrayString` struct, related `From` impl and `free_ffi_array_string` for passing
 collections of strings across the boundary.
+- Add `ffi_derive::FFI` macro, with support for generating an interface for:
+    - `String`
+    - `Uuid`
+    - `bool`
+    - Numeric primitives (excluding: `isize`, `usize`, `i128`, `u128`)
+    - Custom `repr(C)` types
+    - Custom non-`repr(C)` types
+    - Typealiases over any of the above
+    - A few specific generics:
+        - `Option<T>` where `T` is any supported type (but not nested `Option<Option<T>>`)
+        - `Vec<T>` where `T` is any supported type (but not nested `Vec<Vec<T>>`)
+        - `Option<Vec<T>>` where `T` is any supported type (but no additional nesting)
 
 ### Changed
 

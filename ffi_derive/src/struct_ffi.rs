@@ -5,7 +5,7 @@
 use crate::{parsing, parsing::WrappingType};
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use std::collections::HashMap;
 use syn::{Field, Fields, Ident};
 
@@ -37,31 +37,22 @@ pub(super) fn build(
                 acc
             });
 
-    let free_fn_name = Ident::new(
-        &[&type_name.to_string().to_snake_case(), "_free"].concat(),
-        type_name.span(),
-    );
-
-    let init_fn_name = Ident::new(
-        &[&type_name.to_string().to_snake_case(), "_init"].concat(),
-        type_name.span(),
-    );
+    let free_fn_name = format_ident!("{}_free", &type_name.to_string().to_snake_case());
+    let init_fn_name = format_ident!("{}_init", &type_name.to_string().to_snake_case());
 
     // Create a new module for the FFI for this type.
     quote!(
-        #[allow(box_pointers)]
-        #[allow(missing_docs)]
+        #[allow(box_pointers, missing_docs)]
         pub mod #module_name {
-            use ffi_common::{*, string::FFIArrayString, datetime::*};
+            use ffi_common::{*, datetime::*, ffi_string, string::FFIArrayString};
             use std::os::raw::c_char;
             use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
             use paste::paste;
             use uuid::Uuid;
-            use super::*;
+            use super::#type_name;
 
             #[no_mangle]
             pub unsafe extern "C" fn #free_fn_name(data: *const #type_name) {
-                ffi_common::error::clear_last_err_msg();
                 let _ = Box::from_raw(data as *mut #type_name);
             }
 
@@ -77,17 +68,6 @@ pub(super) fn build(
                 Box::into_raw(Box::new(data))
             }
 
-            // Defined here for convenience so other macros can reference it. We could probably
-            // move this to ffi_common, though, and let them all reference it from there.
-            macro_rules! ffi_string {
-                ($string:expr) => {{
-                    ffi_common::error::clear_last_err_msg();
-                    let c_string = try_or_set_error!(CString::new($string));
-                    let c: *const c_char = c_string.into_raw();
-                    c
-                }}
-            }
-
             #attribute_fns
         }
     )
@@ -101,7 +81,12 @@ fn build_field_ffi(
     field: &Field,
     alias_map: &HashMap<Ident, Ident>,
 ) -> (TokenStream, TokenStream, TokenStream) {
-    let field_name = field.ident.as_ref().unwrap();
+    let field_name = field.ident.as_ref().unwrap_or_else(|| {
+        panic!(format!(
+            "Expected field: {:?} to have an identifier.",
+            &field
+        ))
+    });
     let (wrapping_type, unaliased_field_type) = match parsing::get_segment_for_field(&field.ty) {
         Some(segment) => {
             let (ident, wrapping_type) = parsing::separate_wrapping_type_from_inner_type(segment);
@@ -148,7 +133,7 @@ fn resolve_type_alias(field_type: &Ident, alias_map: &HashMap<Ident, Ident>) -> 
 fn uuid_from_c(field_name: &Ident) -> TokenStream {
     quote! {
         unsafe {
-            Uuid::parse_str(CStr::from_ptr(#field_name as *mut c_char).to_str().unwrap()).unwrap()
+            Uuid::parse_str(&CStr::from_ptr(#field_name).to_string_lossy()).unwrap()
         }
     }
 }
@@ -157,7 +142,8 @@ fn uuid_from_c(field_name: &Ident) -> TokenStream {
 fn string_from_c(field_name: &Ident) -> TokenStream {
     quote! {
         unsafe {
-            CStr::from_ptr(#field_name as *mut c_char).to_str().unwrap().to_string()
+            CStr::from_ptr(#field_name).
+            to_string_lossy().into_owned()
         }
     }
 }
@@ -202,7 +188,6 @@ fn generate_string_ffi(
                     pub unsafe extern "C" fn [<get_optional_ #type_name:snake _ #field_name>](
                         ptr: *const #type_name
                     ) -> #ffi_type {
-                        ffi_common::error::clear_last_err_msg();
                         let data = &*ptr;
                         data.#field_name.as_ref().map_or(ptr::null(), |s| {
                             ffi_string!(s.to_string())
@@ -211,29 +196,11 @@ fn generate_string_ffi(
                 }
             }
         }
-        WrappingType::Vec | WrappingType::OptionVec => {
-            let prefix = if wrapping_type == WrappingType::Vec {
-                "get_"
-            } else {
-                "get_optional_"
-            };
-            let ffi_type = quote! { FFIArrayString };
-            arg = quote!( #field_name: #ffi_type, );
-            assignment = quote!(#field_name: #field_name.into(),);
-            quote! {
-                paste! {
-                    #[no_mangle]
-                    #[doc = "Get `" #field_name "` for this `" #type_name"`."]
-                    pub unsafe extern "C" fn [<#prefix #type_name:snake _ #field_name>](
-                        ptr: *const #type_name
-                    ) -> #ffi_type {
-                        ffi_common::error::clear_last_err_msg();
-                        let data = &*ptr;
-                        let v = &data.#field_name;
-                        v.into()
-                    }
-                }
-            }
+        WrappingType::Vec => {
+            return vec_field_ffi(type_name, field_name, &quote!(FFIArrayString));
+        }
+        WrappingType::OptionVec => {
+            return option_vec_field_ffi(type_name, field_name, &quote!(FFIArrayString));
         }
         WrappingType::None => {
             let ffi_type = quote! { *const c_char };
@@ -291,37 +258,25 @@ fn generate_raw_ffi(
                     pub unsafe extern "C" fn [<get_optional_ #type_name:snake _ #field_name>](
                         ptr: *const #type_name
                     ) -> #ffi_type {
-                        ffi_common::error::clear_last_err_msg();
                         let data = &*ptr;
-                        let opt = &data.#field_name;
-                        opt.into()
+                        data.#field_name.as_ref().into()
                     }
                 }
             }
         }
-        WrappingType::Vec | WrappingType::OptionVec => {
-            let prefix = if wrapping_type == WrappingType::Vec {
-                "get_"
-            } else {
-                "get_optional_"
-            };
-            let ffi_type = quote! { paste!([<FFIArray #field_type:camel>]) };
-            assignment = quote!(#field_name: #field_name.into(),);
-            arg = quote!(#field_name: #ffi_type,);
-            quote! {
-                paste! {
-                    #[no_mangle]
-                    #[doc = "Get the `" #field_name "` for a `" #type_name"`."]
-                    pub unsafe extern "C" fn [<#prefix #type_name:snake _ #field_name>](
-                        ptr: *const #type_name
-                    ) -> #ffi_type {
-                        ffi_common::error::clear_last_err_msg();
-                        let data = &*ptr;
-                        let v = &data.#field_name;
-                        v.into()
-                    }
-                }
-            }
+        WrappingType::Vec => {
+            return vec_field_ffi(
+                type_name,
+                field_name,
+                &quote! { paste!([<FFIArray #field_type:camel>]) },
+            );
+        }
+        WrappingType::OptionVec => {
+            return option_vec_field_ffi(
+                type_name,
+                field_name,
+                &quote! { paste!([<FFIArray #field_type:camel>]) },
+            );
         }
         WrappingType::None => {
             assignment = quote!(#field_name: #field_name,);
@@ -333,7 +288,6 @@ fn generate_raw_ffi(
                     pub unsafe extern "C" fn [<get_ #type_name:snake _ #field_name>](
                         ptr: *const #type_name
                     ) -> #field_type {
-                        ffi_common::error::clear_last_err_msg();
                         let data = &*ptr;
                         data.#field_name.clone()
                     }
@@ -371,37 +325,25 @@ fn generate_datetime_ffi(
                     pub unsafe extern "C" fn [<get_optional_ #type_name:snake _ #field_name>](
                         ptr: *const #type_name
                     ) -> #ffi_type {
-                        ffi_common::error::clear_last_err_msg();
                         let data = &*ptr;
-                        let opt = &data.#field_name;
-                        opt.into()
+                        data.#field_name.as_ref().into()
                     }
                 }
             }
         }
-        WrappingType::Vec | WrappingType::OptionVec => {
-            let prefix = if wrapping_type == WrappingType::Vec {
-                "get_"
-            } else {
-                "get_optional_"
-            };
-            let ffi_type = quote! { paste!([<FFIArray TimeStamp>]) };
-            assignment = quote!(#field_name: #field_name.into(),);
-            arg = quote!(#field_name: #ffi_type,);
-            quote! {
-                paste! {
-                    #[no_mangle]
-                    #[doc = "Get the `" #field_name "` for a `" #type_name"`."]
-                    pub unsafe extern "C" fn [<#prefix #type_name:snake _ #field_name>](
-                        ptr: *const #type_name
-                    ) -> #ffi_type {
-                        ffi_common::error::clear_last_err_msg();
-                        let data = &*ptr;
-                        let v = &data.#field_name;
-                        v.into()
-                    }
-                }
-            }
+        WrappingType::Vec => {
+            return vec_field_ffi(
+                type_name,
+                field_name,
+                &quote! { paste!([<FFIArray TimeStamp>]) },
+            );
+        }
+        WrappingType::OptionVec => {
+            return option_vec_field_ffi(
+                type_name,
+                field_name,
+                &quote! { paste!([<FFIArray TimeStamp>]) },
+            );
         }
         WrappingType::None => {
             assignment = quote!(#field_name: #field_name.into(),);
@@ -413,7 +355,6 @@ fn generate_datetime_ffi(
                     pub unsafe extern "C" fn [<get_ #type_name:snake _ #field_name>](
                         ptr: *const #type_name
                     ) -> TimeStamp {
-                        ffi_common::error::clear_last_err_msg();
                         let data = &*ptr;
                         (&data.#field_name).into()
                     }
@@ -461,7 +402,6 @@ fn generate_boxed_ffi(
                     pub unsafe extern "C" fn [<get_optional_ #type_name:snake _ #field_name>](
                         ptr: *const #type_name
                     ) -> #ffi_type {
-                        ffi_common::error::clear_last_err_msg();
                         let data = &*ptr;
                         data.#field_name.as_ref().map_or(ptr::null(), |f| {
                             Box::into_raw(Box::new(f.clone()))
@@ -470,29 +410,19 @@ fn generate_boxed_ffi(
                 }
             }
         }
-        WrappingType::Vec | WrappingType::OptionVec => {
-            let prefix = if wrapping_type == WrappingType::Vec {
-                "get_"
-            } else {
-                "get_optional_"
-            };
-            let ffi_type = quote! { paste!([<FFIArray #field_type:camel>]) };
-            assignment = quote!(#field_name: #field_name.into(),);
-            arg = quote!(#field_name: #ffi_type,);
-            quote! {
-                paste! {
-                    #[no_mangle]
-                    #[doc = "Get the `" #field_name "` for a `" #type_name"`."]
-                    pub unsafe extern "C" fn [<#prefix #type_name:snake _ #field_name>](
-                        ptr: *const #type_name
-                    ) -> #ffi_type {
-                        ffi_common::error::clear_last_err_msg();
-                        let data = &*ptr;
-                        let v = &data.#field_name;
-                        v.into()
-                    }
-                }
-            }
+        WrappingType::Vec => {
+            return vec_field_ffi(
+                type_name,
+                field_name,
+                &quote! { paste!([<FFIArray #field_type:camel>]) },
+            );
+        }
+        WrappingType::OptionVec => {
+            return option_vec_field_ffi(
+                type_name,
+                field_name,
+                &quote! { paste!([<FFIArray #field_type:camel>]) },
+            );
         }
         WrappingType::None => {
             let ffi_type = quote! { *const #field_type };
@@ -506,11 +436,54 @@ fn generate_boxed_ffi(
                     pub unsafe extern "C" fn [<get_ #type_name:snake _ #field_name:snake>](
                         ptr: *const #type_name
                     ) -> #ffi_type {
-                        ffi_common::error::clear_last_err_msg();
                         let data = &*ptr;
                         Box::into_raw(Box::new(data.#field_name.clone()))
                     }
                 }
+            }
+        }
+    };
+    (arg, assignment, getter)
+}
+
+fn vec_field_ffi(
+    type_name: &Ident,
+    field_name: &Ident,
+    ffi_type: &TokenStream,
+) -> (TokenStream, TokenStream, TokenStream) {
+    let arg = quote!(#field_name: #ffi_type,);
+    let assignment = quote!(#field_name: #field_name.into(),);
+    let getter = quote! {
+        paste! {
+            #[no_mangle]
+            #[doc = "Get `" #field_name "` for a `" #type_name"`."]
+            pub unsafe extern "C" fn [<get_ #type_name:snake _ #field_name>](
+                ptr: *const #type_name
+            ) -> #ffi_type {
+                let data = &*ptr;
+                (&*data.#field_name).into()
+            }
+        }
+    };
+    (arg, assignment, getter)
+}
+
+fn option_vec_field_ffi(
+    type_name: &Ident,
+    field_name: &Ident,
+    ffi_type: &TokenStream,
+) -> (TokenStream, TokenStream, TokenStream) {
+    let arg = quote!(#field_name: #ffi_type,);
+    let assignment = quote!(#field_name: #field_name.into(),);
+    let getter = quote! {
+        paste! {
+            #[no_mangle]
+            #[doc = "Get `" #field_name "` for this `" #type_name"`."]
+            pub unsafe extern "C" fn [<get_optional_ #type_name:snake _ #field_name>](
+                ptr: *const #type_name
+            ) -> #ffi_type {
+                let data = &*ptr;
+                data.#field_name.as_deref().into()
             }
         }
     };

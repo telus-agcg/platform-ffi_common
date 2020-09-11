@@ -10,12 +10,6 @@ use syn::{
     PathSegment, Type,
 };
 
-// TODO
-// Parsing is really naive for now; we're digging into the ast to find pretty specific info. It's
-// probably worth writing a more complete parser (similar to serde's derive; basically parse the ast
-// into a custom struct that represents all of the information we care about) so that we can support
-// a larger subset of the language features.
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum WrappingType {
     /// An `Option<T>`.
@@ -38,8 +32,8 @@ pub(super) fn is_repr_c(attrs: &[Attribute]) -> bool {
             if let Meta::List(l) = m {
                 if l.path.segments.first().map(|s| s.ident.to_string()) == Some("repr".to_string())
                 {
-                    if let NestedMeta::Meta(m) = l.nested.first().unwrap() {
-                        return m.path().segments.first().unwrap().ident == "C";
+                    if let NestedMeta::Meta(m) = l.nested.first().unwrap_or_else(|| panic!(format!("Expected attribute list to include metadata: {:?} to have an identifier.", &l))) {
+                        return m.path().segments.first().map(|s| s.ident.to_string()) == Some("C".to_string());
                     }
                 }
                 false
@@ -56,7 +50,9 @@ pub(super) fn is_repr_c(attrs: &[Attribute]) -> bool {
 /// know that it's a `Uuid` or a `u16` so that we can generate the right FFI for it.
 ///
 pub(super) fn type_alias_map(paths: &[String]) -> HashMap<Ident, Ident> {
-    let crate_root = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let crate_root = std::env::var("CARGO_MANIFEST_DIR").expect(
+        "Could not find `CARGO_MANIFEST_DIR` to look up aliases in `parsing::type_alias_map`.",
+    );
     paths.iter().flat_map(|path| {
         let absolute_path = format!("{}/{}", crate_root, path);
         let mut file = File::open(absolute_path).expect("Unable to open file");
@@ -158,8 +154,10 @@ pub(super) fn is_raw_ffi_field(field: &Field) -> bool {
         .any(|m| {
             if let Meta::List(l) = m {
                 if l.path.segments.first().map(|s| s.ident.to_string()) == Some("ffi".to_string()) {
-                    if let NestedMeta::Meta(Meta::Path(path)) = l.nested.first().unwrap() {
-                        if path.segments.first().unwrap().ident == "raw" {
+                    if let Some(NestedMeta::Meta(Meta::Path(path))) = l.nested.first() {
+                        if path.segments.first().map(|p| p.ident.to_string())
+                            == Some("raw".to_string())
+                        {
                             return true;
                         }
                     }
@@ -173,30 +171,10 @@ pub(super) fn is_raw_ffi_field(field: &Field) -> bool {
 /// Returns `None` on unsupported types, or types with no path segments.
 ///
 pub(super) fn get_segment_for_field(field_type: &Type) -> Option<PathSegment> {
-    // TODO: Do we need to support any other field types? Might just want to panic on others and
-    // add support if/when they come up.
-    match field_type {
-        // syn::Type::Array(_) => {}
-        // syn::Type::BareFn(_) => {}
-        // syn::Type::Group(_) => {}
-        // syn::Type::ImplTrait(_) => {}
-        // syn::Type::Infer(_) => {}
-        // syn::Type::Macro(_) => {}
-        // syn::Type::Never(_) => {}
-        // syn::Type::Paren(_) => {}
-        Type::Path(path) => {
-            // TODO: Any reason to loop through path segments? Might leave it at this until we
-            // encounter a type where it's necessary.
-            path.path.segments.first().cloned()
-        }
-        // syn::Type::Ptr(_) => {}
-        // syn::Type::Reference(_) => {}
-        // syn::Type::Slice(_) => {}
-        // syn::Type::TraitObject(_) => {}
-        // syn::Type::Tuple(_) => {}
-        // syn::Type::Verbatim(_) => {}
-        // syn::Type::__Nonexhaustive => {}
-        _ => None,
+    if let Type::Path(path) = field_type {
+        path.path.segments.first().cloned()
+    } else {
+        None
     }
 }
 
