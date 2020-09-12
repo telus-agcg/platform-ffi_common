@@ -15,10 +15,9 @@ pub(super) fn build(module_name: &Ident, type_name: &Ident) -> TokenStream {
     quote! {
         #[allow(missing_docs)]
         pub mod #module_name {
-            use super::*;
-            use ffi_common::declare_value_type_array_struct;
+            use ffi_common::{error, declare_value_type_array_struct};
             use paste::paste;
-            use ffi_common::error;
+            use super::*;
 
             #[no_mangle]
             pub unsafe extern "C" fn #fn_name(data: #type_name) {

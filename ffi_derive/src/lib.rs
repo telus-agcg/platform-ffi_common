@@ -150,8 +150,15 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
     let module_name = format_ident!("{}_ffi", &type_name.to_string().to_snake_case());
     match &ast.data {
         Data::Struct(data) => {
-            // Get the file paths from the attribute args, then build a hash map for resolving type aliases.
-            let paths = parsing::alias_paths(&ast.attrs);
+            // Get the relative file paths from the attribute args, prefix them with the cargo
+            // manifest dir, then build a hash map for resolving type aliases.
+            let crate_root = std::env::var("CARGO_MANIFEST_DIR").expect(
+                "Could not find `CARGO_MANIFEST_DIR` to look up aliases in `ffi_derive::impl_ffi_macro`.",
+            );
+            let paths: Vec<String> = parsing::alias_paths(&ast.attrs)
+                .iter()
+                .map(|path| format!("{}/{}", crate_root, path))
+                .collect();
             let alias_map = parsing::type_alias_map(&paths);
             struct_ffi::build(&module_name, type_name, &data.fields, &alias_map)
         }

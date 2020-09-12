@@ -19,8 +19,6 @@ pub(super) fn build(
 ) -> TokenStream {
     let fields = match fields {
         Fields::Named(named) => named,
-        // Do we care about unnamed or unit fields on resource types? I think not, at least
-        // until we have a case for it.
         Fields::Unnamed(_) => panic!("Unnamed fields are not supported"),
         Fields::Unit => panic!("Unit fields are not supported"),
     };
@@ -49,7 +47,7 @@ pub(super) fn build(
             use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
             use paste::paste;
             use uuid::Uuid;
-            use super::#type_name;
+            use super::*;
 
             #[no_mangle]
             pub unsafe extern "C" fn #free_fn_name(data: *const #type_name) {
@@ -446,6 +444,10 @@ fn generate_boxed_ffi(
     (arg, assignment, getter)
 }
 
+/// Generates the interface for any `Vec<T>` field. Because they're always represented by some
+/// `FFIArrayT` type for FFI, which implements `From<&[T]>`, we end up using `into()` regardless of
+/// what `T` is.
+///
 fn vec_field_ffi(
     type_name: &Ident,
     field_name: &Ident,
@@ -468,6 +470,10 @@ fn vec_field_ffi(
     (arg, assignment, getter)
 }
 
+/// Generates the interface for any `Option<Vec<T>>` field. Because they're always represented by
+/// some `FFIArrayT` type for FFI, which implements `From<Option<&[T]>>`, we end up using `into()`
+/// regardless of what `T` is.
+///
 fn option_vec_field_ffi(
     type_name: &Ident,
     field_name: &Ident,

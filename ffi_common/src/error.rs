@@ -47,7 +47,7 @@ macro_rules! try_or_set_error {
             Ok(val) => val,
             Err(error) => {
                 $crate::error::set_last_err_msg(error.to_string().as_str());
-                return $return_expr;
+                $return_expr
             }
         }
     };
@@ -70,7 +70,7 @@ pub extern "C" fn get_last_err_msg() -> *const c_char {
         msg = last_error.borrow().clone();
     });
     match msg {
-        Some(string) => try_or_set_error!(CString::new(string)).into_raw(),
+        Some(string) => try_or_set_error!(CString::new(string).map(|c| c.into_raw())),
         None => std::ptr::null(),
     }
 }

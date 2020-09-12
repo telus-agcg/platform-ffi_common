@@ -110,9 +110,8 @@ impl<T: ToString> From<&[T]> for FFIArrayString {
             slice
                 .iter()
                 .map(|s| {
-                    let c_string = try_or_set_error!(CString::new(s.to_string()));
-                    let c: *const c_char = c_string.into_raw();
-                    c
+                    let c_string = try_or_set_error!(CString::new(s.to_string()).map(std::ffi::CString::into_raw));
+                    c_string
                 })
                 .collect(),
         );
@@ -240,9 +239,8 @@ pub extern "C" fn free_ffi_array_string(array: FFIArrayString) {
 macro_rules! ffi_string {
     ($string:expr) => {{
         ffi_common::error::clear_last_err_msg();
-        let c_string = try_or_set_error!(CString::new($string));
-        let c: *const c_char = c_string.into_raw();
-        c
+        let c_string = try_or_set_error!(CString::new($string).map(std::ffi::CString::into_raw));
+        c_string
     }};
 }
 
