@@ -8,10 +8,12 @@ publish = ["agrian-registry"]
 [dependencies]
 chrono = "0.4"
 paste = "1.0.0"
+proc-macro2 = "1.0"
+syn = { version = "1.0", features = ["full"] }
 uuid = { version = "0.8", features = ["v4"] }
 
 [build-dependencies]
-cbindgen = "0.13"
+cbindgen = "0.14"
 
 [lib]
 crate-type = ["staticlib", "rlib"]

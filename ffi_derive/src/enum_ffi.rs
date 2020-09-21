@@ -15,7 +15,7 @@ pub(super) fn build(module_name: &Ident, type_name: &Ident) -> TokenStream {
     quote! {
         #[allow(missing_docs)]
         pub mod #module_name {
-            use ffi_common::{error, declare_value_type_array_struct};
+            use ffi_common::{error, declare_value_type_ffi};
             use paste::paste;
             use super::*;
 
@@ -24,7 +24,7 @@ pub(super) fn build(module_name: &Ident, type_name: &Ident) -> TokenStream {
                 let _ = data;
             }
 
-            declare_value_type_array_struct! { #type_name }
+            declare_value_type_ffi! { #type_name }
         }
     }
 }

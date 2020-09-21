@@ -2,24 +2,40 @@
 //! Defines macros for generating some common FFI structures and behaviors.
 //!
 
-/// Generates the following:
+/// This supports exposing any `repr(C)` types through the FFI, from numeric primitives to custom
+/// enums/structs. Generates the following:
 /// 1. A repr(C) struct with a pointer to an array (whose elements are repr(C) value types), its
 /// length, and its capacity.
 /// 1. `From` impls for converting between `&[T]` of those element types and this new struct.
 /// 1. A function for freeing an array of this type.
 ///
 /// Usage looks like:
-/// ```ignore
-/// declare_value_type_array_struct!(u8);
-/// let v: Vec<u8> = vec![1,2,3];
-/// let ffi = FFIArrayU8::from(&*v);
+/// ```
+/// # #[macro_use]
+/// # extern crate ffi_common;
+/// # fn main() {
+/// #[repr(C)]
+/// #[derive(Debug, Clone, Copy)]
+/// pub enum Foo {
+///     Bar,
+///     Baz,
+/// }
+///
+/// impl Default for Foo {
+///     fn default() -> Self {
+///         Self::Bar
+///     }
+/// }
+///
+/// declare_value_type_ffi!(Foo);
+///
+/// let v: Vec<Foo> = vec![Foo::Bar, Foo::Baz];
+/// let ffi = FFIArrayFoo::from(&*v);
+/// # }
 /// ```
 ///
-/// This is intended to be used with numeric primitives, but it may be useful if there are other
-/// collections of repr(C) types that we want to pass through the FFI.
-///
 #[macro_export]
-macro_rules! declare_value_type_array_struct {
+macro_rules! declare_value_type_ffi {
     ($($t:ident),*) => ($(
         paste! {
             #[doc = """
@@ -72,12 +88,45 @@ simplify memory management.
                 ptr: *const $t,
                 len: isize,
             ) -> [<FFIArray $t:camel>] {
-                let mut v = vec![];
-                for i in 0..len {
-                    let e = *ptr.offset(i);
-                    v.push(e);
+                if ptr.is_null() {
+                    [<FFIArray $t:camel>] {
+                        ptr: std::ptr::null(),
+                        len: 0,
+                        cap: 0
+                    }
+                } else {
+                    let mut v = vec![];
+                    for i in 0..len {
+                        let e = *ptr.offset(i);
+                        v.push(e);
+                    }
+                    (&*v).into()
                 }
-                (&*v).into()
+            }
+
+            #[doc = """
+Pass an FFI array to this method to allow Rust to reclaim ownership of the object so that it can be
+safely deallocated.
+
+# Safety
+
+We're assuming that the memory in the `array` you give us was allocated by Rust. Don't call this
+with an object created on the other side of the FFI boundary; that is undefined behavior.
+
+You **must not** access `array` after passing it to this method.
+
+It is safe to call this method with an `array` whose `ptr` is null; we won't double-free or free 
+unallocated memory if, for example, you pass an array that represents the `None` variant of an 
+`Option<Vec<T>>`.
+            """]
+            #[no_mangle]
+            pub extern "C" fn [<free_ffi_array_ $t:snake>](array: [<FFIArray $t:camel>]) {
+                if array.ptr.is_null() {
+                    return;
+                }
+                unsafe {
+                    let _ = Vec::from_raw_parts(array.ptr as *mut $t, array.len, array.cap);
+                }
             }
 
             impl From<&[$t]> for [<FFIArray $t:camel>] {
@@ -108,8 +157,7 @@ simplify memory management.
             impl From<[<FFIArray $t:camel>]> for Vec<$t> {
                 fn from(array: [<FFIArray $t:camel>]) -> Self {
                     unsafe {
-                        let v = Vec::from_raw_parts(array.ptr as *mut $t, array.len, array.cap);
-                        v
+                        Vec::from_raw_parts(array.ptr as *mut $t, array.len, array.cap)
                     }
                 }
             }
@@ -119,34 +167,8 @@ simplify memory management.
                     if array.ptr.is_null() {
                         None
                     } else {
-                        unsafe {
-                            let v = Vec::from_raw_parts(array.ptr as *mut $t, array.len, array.cap);
-                            Some(v)
-                        }
+                        Some(Vec::from(array))
                     }
-                }
-            }
-
-            #[doc = """
-Pass an FFI array to this method to allow Rust to reclaim ownership of the object so that it can be safely deallocated.
-
-# Safety
-
-We're assuming that the memory in the `array` you give us was allocated by Rust. Don't call this with an object created on the other side of the FFI boundary; that is undefined behavior.
-
-You **must not** access `array` after passing it to this method.
-
-It is safe to call this method with an `array` whose `ptr` is null; we won't double-free or free 
-unallocated memory if, for example, you pass an array that represents the `None` variant of an 
-`Option<Vec<T>>`.
-            """]
-            #[no_mangle]
-            pub extern "C" fn [<free_ffi_array_ $t:snake>](array: [<FFIArray $t:camel>]) {
-                if array.ptr.is_null() {
-                    return;
-                }
-                unsafe {
-                    let _ = Vec::from_raw_parts(array.ptr as *mut $t, array.len, array.cap);
                 }
             }
 
@@ -159,6 +181,44 @@ unallocated memory if, for example, you pass an array that represents the `None`
                 #[doc = "The wrapped value when `has_value` is `true`. This should be considered garbage (i.e., not read) by callers when `has_value` is false."]
                 pub value: $t,
             }
+
+            #[doc = """
+Initialize an `Option*` from across the FFI boundary. When `has_value` is `false`, `value` will be
+ignored.
+
+# Safety
+
+You must pass the returned `Option*` object to the matching `free_option_*` function once you're
+finished with it on the consumer side.
+            """]
+            #[no_mangle]
+            pub extern "C" fn [<option_ $t:snake _init>](has_value: bool, value: $t) -> [<Option $t:camel>] {
+                if has_value {
+                    [<Option $t:camel>] {
+                        has_value: true,
+                        value,
+                    }
+                } else {
+                    [<Option $t:camel>] {
+                        has_value: false,
+                        value: $t::default(),
+                    }
+                }
+            }
+
+            #[allow(clippy::missing_const_for_fn)]
+            #[doc = """
+Pass an `Option*` to allow Rust to reclaim the memory allocated for the object.
+
+# Safety
+
+We're assuming that the memory in the `option` you give us was allocated by Rust. Don't call this
+with an object created on the other side of the FFI boundary; that is undefined behavior.
+
+You **must not** access `option` after passing it to this method.
+"""]
+            #[no_mangle]
+            pub extern "C" fn [<free_option_ $t:snake>](_option: [<Option $t:camel>]) { }
 
             impl From<Option<&$t>> for [<Option $t:camel>] {
                 fn from(opt: Option<&$t>) -> Self {
@@ -206,7 +266,7 @@ unallocated memory if, for example, you pass an array that represents the `None`
 ///     pub bar: i32,
 /// }
 ///
-/// declare_opaque_type_array_struct!(Foo);
+/// declare_opaque_type_ffi!(Foo);
 ///
 /// let v: Vec<Foo> = vec![Foo { bar: 1 }, Foo { bar: 2 }, Foo { bar: 3 }];
 /// let ffi = FFIArrayFoo::from(&*v);
@@ -214,7 +274,7 @@ unallocated memory if, for example, you pass an array that represents the `None`
 /// ```
 ///
 #[macro_export]
-macro_rules! declare_opaque_type_array_struct {
+macro_rules! declare_opaque_type_ffi {
     ($($t:ident),*) => ($(
         paste! {
             #[doc = """
@@ -237,11 +297,11 @@ side of the FFI boundary) so we can take care of those steps.
             #[derive(Clone, Debug)]
             pub struct [<FFIArray $t:camel>] {
                 #[doc = "Pointer to the first element in the array."]
-                ptr: *const *const $t,
+                pub ptr: *const *const $t,
                 #[doc = "The length of (i.e. the number of elements in) this array."]
-                len: usize,
+                pub len: usize,
                 #[doc = "The capacity with which this array was allocated."]
-                cap: usize,
+                pub cap: usize,
             }
 
             #[doc = """
@@ -267,12 +327,20 @@ simplify memory management.
                 ptr: *const *const $t,
                 len: isize,
             ) -> [<FFIArray $t:camel>] {
-                let mut v = vec![];
-                for i in 0..len {
-                    let e = *ptr.offset(i);
-                    v.push((&*e).clone());
+                if ptr.is_null() {
+                    [<FFIArray $t:camel>] {
+                        ptr: std::ptr::null(),
+                        len: 0,
+                        cap: 0
+                    }
+                } else {
+                    let mut v = vec![];
+                    for i in 0..len {
+                        let e = *ptr.offset(i);
+                        v.push((&*e).clone());
+                    }
+                    v.as_slice().into()
                 }
-                v.as_slice().into()
             }
 
             impl From<&[$t]> for [<FFIArray $t:camel>] {
@@ -323,21 +391,20 @@ simplify memory management.
                         None
                     } else {
                         unsafe {
-                            Some(Vec::from_raw_parts(array.ptr as *mut *const $t, array.len, array.cap)
-                                .into_iter()
-                                .map(|e| *Box::from_raw(e as *mut $t))
-                                .collect())
+                            Some(Vec::from(array))
                         }
                     }
                 }
             }
 
             #[doc = """
-Pass an FFI array to this method to allow Rust to reclaim ownership of the object so that it can be safely deallocated.
+Pass an FFI array to this method to allow Rust to reclaim ownership of the object so that it can be
+safely deallocated.
 
 # Safety
 
-We're assuming that the memory in the `array` you give us was allocated by Rust. Don't call this with an object created on the other side of the FFI boundary; that is undefined behavior.
+We're assuming that the memory in the `array` you give us was allocated by Rust. Don't call this
+with an object created on the other side of the FFI boundary; that is undefined behavior.
 
 You **must not** access `array` after passing it to this method.
 

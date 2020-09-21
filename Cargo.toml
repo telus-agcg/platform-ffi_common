@@ -2,4 +2,5 @@
 members = [
     "ffi_common",
     "ffi_derive",
+    "ffi_consumer",
 ]

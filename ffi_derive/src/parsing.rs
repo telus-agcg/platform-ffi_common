@@ -195,8 +195,6 @@ pub(super) fn separate_wrapping_type_from_inner_type(
     match field_type_path.arguments {
         PathArguments::None => panic!("No generic args in an option type...?"),
         PathArguments::AngleBracketed(generic) => {
-            // TODO: Do we need to care about lifetimes, bindings, constraints, or constants?
-            // I think not...these struct definitions should be pretty simple.
             if let Some(GenericArgument::Type(t)) = generic.args.first() {
                 if let Some(inner_segment) = get_segment_for_field(t) {
                     if wrapping_type == WrappingType::Option && inner_segment.ident == "Vec" {

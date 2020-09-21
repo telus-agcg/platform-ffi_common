@@ -26,6 +26,8 @@ collections of strings across the boundary.
         - `Option<T>` where `T` is any supported type (but not nested `Option<Option<T>>`)
         - `Vec<T>` where `T` is any supported type (but not nested `Vec<Vec<T>>`)
         - `Option<Vec<T>>` where `T` is any supported type (but no additional nesting)
+- Add `ffi_consumer` crate for generating native consumer code (hardcoded to Swift for now) to wrap
+the FFI produced by `ffi_derive`.
 
 ### Changed
 
