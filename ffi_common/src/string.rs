@@ -51,7 +51,7 @@ use uuid::Uuid;
 ///
 #[repr(C)]
 #[allow(missing_copy_implementations)]
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct FFIArrayString {
     #[doc = "Pointer to the first element in the array."]
     pub ptr: *const *const c_char,
@@ -110,7 +110,9 @@ impl<T: ToString> From<&[T]> for FFIArrayString {
             slice
                 .iter()
                 .map(|s| {
-                    let c_string = try_or_set_error!(CString::new(s.to_string()).map(std::ffi::CString::into_raw));
+                    let c_string = try_or_set_error!(
+                        CString::new(s.to_string()).map(std::ffi::CString::into_raw)
+                    );
                     c_string
                 })
                 .collect(),
@@ -142,8 +144,11 @@ impl<T: ToString> From<Option<&[T]>> for FFIArrayString {
 impl From<FFIArrayString> for Vec<String> {
     fn from(array: FFIArrayString) -> Self {
         unsafe {
-            let v = Vec::from_raw_parts(array.ptr as *mut *const c_char, array.len, array.cap);
-            v.into_iter()
+            // Create a vec from the data in the array, but don't let Rust drop it. That will happen
+            // when the consumer tells us they're done with the array by calling
+            // `free_ffi_array_string`. Clone it into one that we can use safely.
+            Vec::from_raw_parts(array.ptr as *mut *const c_char, array.len, array.cap)
+                .into_iter()
                 .map(|s| {
                     CString::from_raw(s as *mut c_char)
                         .to_str()
@@ -160,19 +165,7 @@ impl From<FFIArrayString> for Option<Vec<String>> {
         if array.ptr.is_null() {
             None
         } else {
-            unsafe {
-                let v = Vec::from_raw_parts(array.ptr as *mut *const c_char, array.len, array.cap);
-                Some(
-                    v.into_iter()
-                        .map(|s| {
-                            CString::from_raw(s as *mut c_char)
-                                .to_str()
-                                .unwrap()
-                                .to_string()
-                        })
-                        .collect(),
-                )
-            }
+            Some(Vec::from(array))
         }
     }
 }
@@ -181,8 +174,8 @@ impl From<FFIArrayString> for Option<Vec<String>> {
 impl From<FFIArrayString> for Vec<Uuid> {
     fn from(array: FFIArrayString) -> Self {
         unsafe {
-            let v = Vec::from_raw_parts(array.ptr as *mut *const c_char, array.len, array.cap);
-            v.into_iter()
+            Vec::from_raw_parts(array.ptr as *mut *const c_char, array.len, array.cap)
+                .into_iter()
                 .map(|s| {
                     Uuid::parse_str(CString::from_raw(s as *mut c_char).to_str().unwrap()).unwrap()
                 })
@@ -191,12 +184,17 @@ impl From<FFIArrayString> for Vec<Uuid> {
     }
 }
 
+/// This is a gross type, but we have to support it because a) some services (notably core's
+/// associations type) return optional collections, and b) other services actually distinguish
+/// between `None` and `[]` to mean nothing vs everything. Avoid Option<Vec<T>> if you can, but
+/// it's sometimes required to describe service resources in `agrian_types`.
+///
 impl From<FFIArrayString> for Option<Vec<Uuid>> {
     fn from(array: FFIArrayString) -> Self {
         if array.ptr.is_null() {
             None
         } else {
-            Some(array.into())
+            Some(Vec::from(array))
         }
     }
 }
@@ -278,5 +276,17 @@ mod tests {
         free_rust_string(error);
         let error_bytes_after_free = unsafe { CStr::from_ptr(error).to_bytes() };
         assert!(error_bytes_after_free.is_empty());
+    }
+
+    #[test]
+    fn string_array_move_semantics() {
+        let v = vec!["one", "two"];
+        let string_array = FFIArrayString::from(&*v);
+        let v2: Vec<String> = string_array.into();
+        // Both v and v2 are safe to access; v's data was cloned into `string_array` so that it can
+        // be transferred across the FFI boundary regardless of the lifetime of v. v2 is created by
+        // taking ownership of `string_array` (giving us use of that data passed from the FFI
+        // consumer, and simultaneously reclaiming the memory occupied by the FFI type).
+        assert_eq!(v, v2);
     }
 }

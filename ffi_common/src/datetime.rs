@@ -2,7 +2,7 @@
 //! FFI support for exposing time stamps.
 //!
 
-use crate::declare_value_type_array_struct;
+use crate::declare_value_type_ffi;
 use chrono::NaiveDateTime;
 use paste::paste;
 
@@ -16,7 +16,7 @@ pub struct TimeStamp {
     nsecs: u32,
 }
 
-declare_value_type_array_struct!(TimeStamp);
+declare_value_type_ffi!(TimeStamp);
 
 // Conversion impls (we need to do some of these manually to convert `NaiveDateTime` to the FFI-safe
 // `TimeStamp`, which can then be wrapped in the derived `OptionTimeStamp` and `FFIArrayTimeStamp`).
@@ -73,8 +73,10 @@ impl From<&[NaiveDateTime]> for FFIArrayTimeStamp {
 impl From<FFIArrayTimeStamp> for Vec<NaiveDateTime> {
     fn from(array: FFIArrayTimeStamp) -> Self {
         unsafe {
-            let v = Vec::from_raw_parts(array.ptr as *mut TimeStamp, array.len, array.cap);
-            v.iter().map(|e| e.into()).collect()
+            Vec::from_raw_parts(array.ptr as *mut TimeStamp, array.len, array.cap)
+                .iter()
+                .map(|e| e.into())
+                .collect()
         }
     }
 }
@@ -97,7 +99,7 @@ impl From<FFIArrayTimeStamp> for Option<Vec<NaiveDateTime>> {
         if array.ptr.is_null() {
             None
         } else {
-            Some(array.into())
+            Some(Vec::from(array))
         }
     }
 }
