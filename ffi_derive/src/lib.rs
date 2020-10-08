@@ -155,12 +155,21 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
             let crate_root = std::env::var("CARGO_MANIFEST_DIR").expect(
                 "Could not find `CARGO_MANIFEST_DIR` to look up aliases in `ffi_derive::impl_ffi_macro`.",
             );
-            let paths: Vec<String> = parsing::alias_paths(&ast.attrs)
+
+            let struct_attributes = parsing::parse_struct_attributes(&ast.attrs);
+
+            let paths: Vec<String> = struct_attributes.alias_paths
                 .iter()
                 .map(|path| format!("{}/{}", crate_root, path))
                 .collect();
             let alias_map = parsing::type_alias_map(&paths);
-            struct_ffi::build(&module_name, type_name, &data.fields, &alias_map)
+
+            match struct_attributes.custom_path {
+                Some(custom_module_path) => {
+                    struct_ffi::build_custom(&module_name, &format!("{}/{}", crate_root, custom_module_path), type_name)
+                }
+                None => struct_ffi::build(&module_name, type_name, &data.fields, &alias_map)
+            }
         }
         Data::Enum(_) => {
             if !parsing::is_repr_c(&ast.attrs) {

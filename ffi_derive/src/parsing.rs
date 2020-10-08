@@ -6,8 +6,11 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use syn::{
-    Attribute, Field, GenericArgument, Ident, Item, Lit, Meta, NestedMeta, PathArguments,
-    PathSegment, Type,
+    Attribute, Field, GenericArgument, Ident, Item, Lit,
+    Meta::{List, NameValue, Path},
+    NestedMeta,
+    NestedMeta::Meta,
+    PathArguments, PathSegment, Type,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -29,10 +32,10 @@ pub(super) enum WrappingType {
 pub(super) fn is_repr_c(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.parse_meta().map_or(false, |m| {
-            if let Meta::List(l) = m {
+            if let List(l) = m {
                 if l.path.segments.first().map(|s| s.ident.to_string()) == Some("repr".to_string())
                 {
-                    if let NestedMeta::Meta(m) = l.nested.first().unwrap_or_else(|| panic!(format!("Expected attribute list to include metadata: {:?} to have an identifier.", &l))) {
+                    if let Meta(m) = l.nested.first().unwrap_or_else(|| panic!(format!("Expected attribute list to include metadata: {:?} to have an identifier.", &l))) {
                         return m.path().segments.first().map(|s| s.ident.to_string()) == Some("C".to_string());
                     }
                 }
@@ -76,61 +79,154 @@ pub(super) fn type_alias_map(paths: &[String]) -> HashMap<Ident, Ident> {
     .collect()
 }
 
-/// Reads through the metadata for each attribute and collects all of the ones marked `ffi`.
+/// Figures out the names and types of all of the arguments in the custom FFI initializer and
+/// getters for `type_name` at `path`.
 ///
-fn parse_ffi_attributes(attrs: &[Attribute]) -> Vec<syn::MetaList> {
-    attrs
-        .iter()
-        .filter_map(|attr| {
-            attr.parse_meta().map_or(None, |m| {
-                if let Meta::List(l) = m {
-                    if l.path.segments.first().map(|s| s.ident.to_string())
-                        != Some("ffi".to_string())
-                    {
-                        return None;
-                    }
-                    Some(l)
-                } else {
-                    None
-                }
-            })
+/// Returns a tuple of:
+/// * The initializer's argument names and their types.
+/// * The getter functions' names and return types.
+///
+/// Pretty gross, but should get nuked in DEV-13175 in favor parsing the FFI module into a type.
+///
+#[allow(clippy::complexity)]
+pub(super) fn custom_ffi_types(
+    path: &str,
+    type_name: &str,
+    expected_init: &Ident,
+) -> (Vec<(Ident, Type)>, Vec<(Ident, Type)>) {
+    let mut file = File::open(path).expect("Unable to open file");
+    let mut src = String::new();
+    let _ = file.read_to_string(&mut src).expect("Unable to read file");
+
+    let fns: Vec<syn::ItemFn> = syn::parse_file(&src)
+        .expect("Unable to parse file")
+        .items
+        .into_iter()
+        .filter_map(|item| {
+            if let Item::Fn(f) = item {
+                Some(f)
+            } else {
+                None
+            }
         })
-        .collect()
-}
+        .collect();
 
-pub(super) fn alias_paths(attrs: &[Attribute]) -> Vec<String> {
-    parse_ffi_attributes(attrs)
+    let initializer = fns
         .iter()
-        .map(|l| l.nested.iter().flat_map(|n| parse_alias_paths(n)).collect())
-        .collect()
+        .find(|f| &f.sig.ident == expected_init)
+        .unwrap_or_else(|| {
+            panic!(
+                "No function found with identifier {:?} in file {:?}",
+                expected_init, file
+            )
+        })
+        .clone();
+
+    // Make sure the initializer's signature is right.
+    if let syn::ReturnType::Type(_, return_type) = &initializer.sig.output {
+        assert_eq!(
+            return_type.as_ref(),
+            &syn::parse_str::<Type>(&format!("*const {}", type_name)).unwrap()
+        );
+    } else {
+        panic!("Couldn't find expected type signature on custom initializer.")
+    }
+
+    let init_data: Vec<(Ident, Type)> = initializer
+        .sig
+        .inputs
+        .iter()
+        .map(|arg| {
+            if let syn::FnArg::Typed(arg) = arg {
+                if let syn::Pat::Ident(ident) = arg.pat.as_ref() {
+                    return (ident.ident.clone(), *arg.ty.clone());
+                }
+            }
+            panic!("Unsupported initializer argument: {:?}", arg);
+        })
+        .collect();
+
+    let function_data: Vec<(Ident, Type)> = fns
+        .iter()
+        .filter_map(|f| {
+            if &f.sig.ident == expected_init {
+                return None;
+            }
+            // TODO: Assert that the one and only argument is a `ptr: *const type_name`.
+            if let syn::ReturnType::Type(_, return_type) = &f.sig.output {
+                return Some((f.sig.ident.clone(), *return_type.clone()));
+            }
+            panic!("Can't read return type of function: {:?}", f);
+        })
+        .collect();
+
+    (init_data, function_data)
 }
 
-/// Dig the paths out of the attribute argument and collect them into a `Vec<String>`.
-///
-/// Note that this only takes one arg because we're not supporting multiple `alias_paths` or any
-/// additional arguments.
+fn parse_ffi_meta(attr: &Attribute) -> Result<Vec<NestedMeta>, ()> {
+    if !attr.path.is_ident("ffi") {
+        return Ok(Vec::new());
+    }
+
+    match attr.parse_meta() {
+        Ok(List(meta)) => Ok(meta.nested.into_iter().collect()),
+        Ok(other) => {
+            panic!("Unexpected meta attribute found: {:?}", other);
+        }
+        Err(err) => {
+            panic!("Error parsing meta attribute: {:?}", err);
+        }
+    }
+}
+
+pub(super) struct StructAttributes {
+    pub(super) alias_paths: Vec<String>,
+    pub(super) custom_path: Option<String>,
+}
+
+pub(super) fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
+    let mut alias_paths = vec![];
+    let mut custom_path: Option<String> = None;
+    for meta_item in attrs.iter().flat_map(parse_ffi_meta).flatten() {
+        match &meta_item {
+            Meta(NameValue(m)) if m.path.is_ident("custom") => {
+                if let Lit::Str(lit) = &m.lit {
+                    custom_path = Some(lit.value());
+                }
+            }
+            Meta(List(l)) if l.path.is_ident("alias_paths") => {
+                alias_paths.extend(l.nested.iter().flat_map(parse_alias_paths));
+            }
+            other => {
+                panic!("Unsupported ffi attribute type: {:?}", other);
+            }
+        }
+    }
+    StructAttributes {
+        alias_paths,
+        custom_path,
+    }
+}
+
+/// Dig the paths out of an attribute argument and collect them into a `Vec<String>`.
 ///
 fn parse_alias_paths(arg: &NestedMeta) -> Vec<String> {
-    if let NestedMeta::Meta(Meta::List(list)) = arg {
-        assert_eq!(
-            list.path.segments.first().unwrap().ident,
-            "alias_paths",
-            "Unsupported argument for derive_ffi attribute."
-        );
-        let paths: Vec<String> = list
-            .nested
-            .iter()
-            .filter_map(|meta| {
-                if let NestedMeta::Lit(Lit::Str(path)) = meta {
-                    Some(path.value())
-                } else {
-                    None
-                }
-            })
-            .collect();
-        return paths;
+    match arg {
+        Meta(_) => {
+            panic!("Unexpected meta attribute {:?}", arg);
+        }
+        NestedMeta::Lit(lit) => {
+            if let Lit::Str(lit_str) = lit {
+                lit_str
+                    .value()
+                    .split(',')
+                    .map(|s| s.trim_end().trim_start().to_string())
+                    .collect()
+            } else {
+                panic!("Non-string literal attribute: {:?}", lit)
+            }
+        }
     }
-    vec![]
 }
 
 /// Looks for the `ffi(raw)` helper attribute on `field`. Returns `true` if found, otherwise
@@ -148,9 +244,9 @@ pub(super) fn is_raw_ffi_field(field: &Field) -> bool {
         .iter()
         .filter_map(|a| a.parse_meta().ok())
         .any(|m| {
-            if let Meta::List(l) = m {
+            if let List(l) = m {
                 if l.path.segments.first().map(|s| s.ident.to_string()) == Some("ffi".to_string()) {
-                    if let Some(NestedMeta::Meta(Meta::Path(path))) = l.nested.first() {
+                    if let Some(Meta(Path(path))) = l.nested.first() {
                         if path.segments.first().map(|p| p.ident.to_string())
                             == Some("raw".to_string())
                         {
@@ -271,19 +367,30 @@ mod tests {
         )
         .ok();
 
+        let mut dir2 = env::temp_dir();
+        dir2.push("aliases2.rs");
+        let _ = fs::write(
+            &dir2,
+            r#"
+            pub type AliasedI128 = i128;
+            "#,
+        )
+        .ok();
+
         // Parse the alias paths attribute from a struct
         let item_string = format!(
             r#"
-            #[ffi(alias_paths("{}"))]
+            #[ffi(alias_paths("{}, {}"))]
             struct TestStruct {{ }}
             "#,
-            dir.to_str().unwrap()
+            dir.to_str().unwrap(),
+            dir2.to_str().unwrap(),
         );
         let item = match syn::parse_str::<Item>(&item_string) {
             Ok(Item::Struct(i)) => i,
             _ => panic!("Unexpected item type"),
         };
-        let paths = alias_paths(&item.attrs);
+        let paths = parse_struct_attributes(&item.attrs).alias_paths;
 
         let expected: HashMap<Ident, Ident> = [
             (format_ident!("AnotherNameForU8"), format_ident!("u8")),
@@ -292,6 +399,7 @@ mod tests {
                 format_ident!("AliasedAlias"),
                 format_ident!("AnotherNameForF32"),
             ),
+            (format_ident!("AliasedI128"), format_ident!("i128")),
         ]
         .iter()
         .cloned()

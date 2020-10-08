@@ -2,7 +2,7 @@
 //! Creates an FFI module for a struct, exposing its fields as C getter functions.
 //!
 
-use crate::field_ffi;
+use crate::{field_ffi, parsing};
 use ffi_common::codegen_helpers::FieldFFI;
 use ffi_consumer::consumer_struct;
 use heck::SnakeCase;
@@ -28,6 +28,57 @@ pub(super) fn build(
         &free_fn_name.to_string(),
     );
 
+    write_consumer_files(type_name, consumer);
+
+    module_token_stream(
+        module_name,
+        type_name,
+        fields_ffi,
+        &init_fn_name,
+        &free_fn_name,
+    )
+}
+
+pub(super) fn build_custom(
+    module_name: &Ident,
+    custom_module_path: &str,
+    type_name: &Ident,
+) -> TokenStream {
+    let init_fn_name = format_ident!("{}_init", &type_name.to_string().to_snake_case());
+    let free_fn_name = format_ident!("{}_free", &type_name.to_string().to_snake_case());
+    let custom_ffi =
+        parsing::custom_ffi_types(custom_module_path, &type_name.to_string(), &init_fn_name);
+
+    let consumer = consumer_struct::generate_custom(
+        &type_name.to_string(),
+        &init_fn_name.to_string(),
+        custom_ffi.0.as_ref(),
+        custom_ffi.1.as_ref(),
+        &free_fn_name.to_string(),
+    );
+
+    write_consumer_files(type_name, consumer);
+
+    quote!(
+        #[allow(box_pointers, missing_docs)]
+        pub mod #module_name {
+            use ffi_common::{*, datetime::*, ffi_string, string::FFIArrayString};
+            use std::os::raw::c_char;
+            use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
+            use paste::paste;
+            use super::*;
+
+            #[no_mangle]
+            pub unsafe extern "C" fn #free_fn_name(data: *const #type_name) {
+                let _ = Box::from_raw(data as *mut #type_name);
+            }
+
+            declare_opaque_type_ffi! { #type_name }
+        }
+    )
+}
+
+fn write_consumer_files(type_name: &Ident, consumer: String) {
     let out_dir = match option_env!("FFI_CONSUMER_ROOT_DIR") {
         Some(dir) => dir,
         None => env!("OUT_DIR"),
@@ -37,14 +88,6 @@ pub(super) fn build(
     let output_file = format!("{}/{}.swift", consumer_dir, type_name.to_string());
     std::fs::write(&output_file, consumer)
         .unwrap_or_else(|e| panic!("Failed to write {} with error {}", output_file, e));
-
-    module_token_stream(
-        module_name,
-        type_name,
-        fields_ffi,
-        &init_fn_name,
-        &free_fn_name,
-    )
 }
 
 /// Generate all the data for the FFI so that we can operate on it to produce both the FFI consumer
@@ -98,7 +141,6 @@ fn module_token_stream(
             use std::os::raw::c_char;
             use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
             use paste::paste;
-            use uuid::Uuid;
             use super::*;
 
             #[no_mangle]
