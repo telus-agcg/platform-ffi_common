@@ -11,6 +11,21 @@ use quote::{format_ident, quote};
 use std::collections::HashMap;
 use syn::{Fields, Ident};
 
+struct FFIStruct {
+    name: Ident,
+    fields: Vec<FieldFFI>,
+}
+
+impl FFIStruct {
+    fn init_fn_name(&self) -> Ident {
+        format_ident!("{}_init", &self.name.to_string().to_snake_case())
+    }
+
+    fn free_fn_name(&self) -> Ident {
+        format_ident!("{}_free", &self.name.to_string().to_snake_case())
+    }
+}
+
 /// Builds an FFI module for the struct `type_name`.
 ///
 pub(super) fn build(
@@ -19,7 +34,7 @@ pub(super) fn build(
     fields: &Fields,
     alias_map: &HashMap<Ident, Ident>,
 ) -> TokenStream {
-    let (fields_ffi, init_fn_name, free_fn_name) = generate_ffi(type_name, fields, alias_map);
+    let (fields_ffi, init_fn_name, free_fn_name) = generate_ffi(type_name.clone(), fields, alias_map);
 
     let consumer = consumer_struct::generate(
         &type_name.to_string(),
@@ -28,11 +43,11 @@ pub(super) fn build(
         &free_fn_name.to_string(),
     );
 
-    write_consumer_files(type_name, consumer);
+    write_consumer_files(&type_name, consumer);
 
     module_token_stream(
         module_name,
-        type_name,
+        &type_name,
         fields_ffi,
         &init_fn_name,
         &free_fn_name,
@@ -94,7 +109,7 @@ fn write_consumer_files(type_name: &Ident, consumer: String) {
 /// wrapper and the tokenized module.
 ///
 fn generate_ffi(
-    type_name: &Ident,
+    type_name: Ident,
     fields: &Fields,
     alias_map: &HashMap<Ident, Ident>,
 ) -> (Vec<FieldFFI>, Ident, Ident) {
@@ -105,7 +120,7 @@ fn generate_ffi(
     }
     .named
     .iter()
-    .map(|field| field_ffi::generate(type_name, field, alias_map))
+    .map(|field| field_ffi::generate(type_name.clone(), field, alias_map))
     .collect();
     (
         fields_ffi,
@@ -127,9 +142,9 @@ fn module_token_stream(
         fields_ffi
             .into_iter()
             .fold((quote!(), quote!(), quote!()), |mut acc, field_ffi| {
-                acc.0.extend(field_ffi.argument);
-                acc.1.extend(field_ffi.assignment_expression);
-                acc.2.extend(field_ffi.getter);
+                acc.0.extend(field_ffi.ffi_initializer_argument());
+                acc.1.extend(field_ffi.assignment_expression());
+                acc.2.extend(field_ffi.getter_body());
                 acc
             });
 

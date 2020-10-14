@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use syn::{
-    Attribute, Field, GenericArgument, Ident, Item, Lit,
+    Attribute, GenericArgument, Ident, Item, Lit,
     Meta::{List, NameValue, Path},
     NestedMeta,
     NestedMeta::Meta,
@@ -208,6 +208,30 @@ pub(super) fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
     }
 }
 
+pub(super) fn parse_fn_attributes(attrs: &[Attribute]) -> ffi_common::codegen_helpers::FieldAttributes {
+    let mut expose_as: Option<Ident> = None;
+    let mut raw = false;
+    for meta_item in attrs.iter().flat_map(parse_ffi_meta).flatten() {
+        match &meta_item {
+            Meta(NameValue(m)) if m.path.is_ident("expose_as") => {
+                if let Lit::Str(lit) = &m.lit {
+                    expose_as = Some(quote::format_ident!("{}", lit.value()));
+                }
+            }
+            Meta(Path(p)) if p.is_ident("raw") => {
+                raw = true;
+            }
+            other => {
+                panic!("Unsupported ffi attribute type: {:?}", other);
+            }
+        }
+    }
+    ffi_common::codegen_helpers::FieldAttributes {
+        expose_as,
+        raw,
+    }
+}
+
 /// Dig the paths out of an attribute argument and collect them into a `Vec<String>`.
 ///
 fn parse_alias_paths(arg: &NestedMeta) -> Vec<String> {
@@ -227,36 +251,6 @@ fn parse_alias_paths(arg: &NestedMeta) -> Vec<String> {
             }
         }
     }
-}
-
-/// Looks for the `ffi(raw)` helper attribute on `field`. Returns `true` if found, otherwise
-/// `false`.
-///
-/// We use this because we can't know whether a custom type is safe for FFI as a raw type (like a
-/// `repr(C)` enum), or unsafe (like a complex struct that would need to be boxed before exposing).
-///
-/// We could eventually expand this to allow the `ffi` attribute to describe a custom FFI format,
-/// along the lines of `serde`'s custom (de)serializer attributes.
-///
-pub(super) fn is_raw_ffi_field(field: &Field) -> bool {
-    field
-        .attrs
-        .iter()
-        .filter_map(|a| a.parse_meta().ok())
-        .any(|m| {
-            if let List(l) = m {
-                if l.path.segments.first().map(|s| s.ident.to_string()) == Some("ffi".to_string()) {
-                    if let Some(Meta(Path(path))) = l.nested.first() {
-                        if path.segments.first().map(|p| p.ident.to_string())
-                            == Some("raw".to_string())
-                        {
-                            return true;
-                        }
-                    }
-                }
-            }
-            false
-        })
 }
 
 /// Finds the first `PathSegment` for `field_type`.
@@ -431,7 +425,7 @@ mod tests {
         .first()
         .expect("Failed to parse field")
         .to_owned();
-        assert!(is_raw_ffi_field(&field));
+        assert!(parse_fn_attributes(&field.attrs).raw);
     }
 
     #[test]
@@ -457,7 +451,7 @@ mod tests {
         .first()
         .expect("Failed to parse field")
         .to_owned();
-        assert!(!is_raw_ffi_field(&field));
+        assert!(!parse_fn_attributes(&field.attrs).raw);
     }
 
     #[test]

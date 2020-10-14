@@ -9,6 +9,8 @@ publish = ["agrian-registry"]
 chrono = "0.4"
 paste = "1.0.0"
 proc-macro2 = "1.0"
+quote = "1.0"
+heck = "0.3"
 syn = { version = "1.0", features = ["full"] }
 uuid = { version = "0.8", features = ["v4"] }
 

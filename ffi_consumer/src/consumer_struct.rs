@@ -161,14 +161,14 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
             // This looks like `foo: Bar,`.
             acc.0.push_str(&format!(
                 "{:<8}: {}{}",
-                f.field.to_string(),
-                f.consumer_type.to_string(),
+                f.field_name.to_string(),
+                f.consumer_type(),
                 trailing_punctuation
             ));
             // This looks like `foo.toRust(),`.
             acc.1.push_str(&format!(
                 "{:<12}.toRust(){}",
-                f.field.to_string(),
+                f.field_name.to_string(),
                 trailing_punctuation
             ));
             // This looks like `public var foo: Bar { Bar.fromRust(get_bar_foo(pointer) }`.
@@ -178,10 +178,10 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
 }}
 
 ",
-                f.field.to_string(),
-                f.consumer_type.to_string(),
-                f.consumer_type.to_string(),
-                f.getter_name.to_string()
+                f.field_name.to_string(),
+                f.consumer_type(),
+                f.consumer_type(),
+                f.getter_name().to_string()
             ));
             acc
         },
