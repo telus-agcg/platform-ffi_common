@@ -34,9 +34,8 @@ pub(super) fn generate(
         &format!("free_ffi_array_{}", native_type.to_snake_case()),
     );
     output.push_str(&option_conformance(
-        &format!("Option{}", native_type.to_camel_case()),
+        consumer_type,
         ffi_type,
-        default_value,
         &format!("option_{}_init", native_type.to_snake_case()),
         &format!("free_option_{}", native_type.to_snake_case()),
     ));
@@ -44,10 +43,6 @@ pub(super) fn generate(
     output.push_str(&consumer_array_type(
         consumer_type,
         &format!("FFIArray{}", native_type.to_camel_case()),
-    ));
-    output.push_str(&consumer_option_type(
-        consumer_type,
-        &format!("Option{}", native_type.to_camel_case()),
     ));
     output
 }
@@ -84,29 +79,40 @@ extension {}: FFIArray {{
 /// Conversion from the consumer's native optional type to the Option type for `native_type`.
 ///
 fn option_conformance(
-    option_type: &str,
+    consumer_type: &str,
     ffi_type: &str,
-    default_value: &str,
     init: &str,
     free: &str,
 ) -> String {
     format!(
         r#"
-extension {}: FFIOption {{
-    typealias Value = {}
-    static var defaultValue: Value {{ {} }}
+extension Optional where Wrapped == {} {{
+    func toRust() -> UnsafeMutablePointer<{}>? {{
+        switch self {{
+        case let .some(value):
+            let v = value.toRust()
+            return UnsafeMutablePointer(mutating: {}(true, v))
+        case .none:
+            return nil
+        }}
+    }}
     
-    static func from(has_value: Bool, value: Value) -> Self {{
-{:<8}(has_value, value)
+    static func fromRust(_ ptr: UnsafePointer<{}>?) -> Self {{
+        guard let ptr = ptr else {{
+            return .none
+        }}
+        let value = Wrapped.fromRust(ptr.pointee)
+        free(ptr)
+        return value
     }}
-
-    static func free(_ option: Self) {{
-{:<8}(option)
+    
+    static func free(_ option: UnsafePointer<{}>?) {{
+        {}(option)
     }}
-
 }}
+
 "#,
-        option_type, ffi_type, default_value, init, free
+        consumer_type, ffi_type, init, ffi_type, ffi_type, free
     )
 }
 
@@ -143,18 +149,5 @@ extension {}: NativeArrayData {{
 }}
 "#,
         consumer_type, ffi_array_type
-    )
-}
-
-/// Linking between the Rust and consumer option types.
-///
-fn consumer_option_type(consumer_type: &str, ffi_option_type: &str) -> String {
-    format!(
-        r#"
-extension {}: NativeOptionData {{
-    typealias FFIOptionType = {}
-}}
-"#,
-        consumer_type, ffi_option_type
     )
 }

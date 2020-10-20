@@ -67,7 +67,7 @@ extension Optional where Wrapped == String {
         guard case let .some(value) = self else {
             return nil
         }
-        return (value as NSString).utf8String
+        return value.toRust()
     }
 }
 

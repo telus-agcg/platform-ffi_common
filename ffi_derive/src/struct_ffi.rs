@@ -34,23 +34,25 @@ pub(super) fn build(
     fields: &Fields,
     alias_map: &HashMap<Ident, Ident>,
 ) -> TokenStream {
-    let (fields_ffi, init_fn_name, free_fn_name) = generate_ffi(type_name.clone(), fields, alias_map);
+    let (fields_ffi, init_fn_name, free_fn_name, clone_fn_name) = generate_ffi(type_name, fields, alias_map);
 
     let consumer = consumer_struct::generate(
         &type_name.to_string(),
         &fields_ffi,
         &init_fn_name.to_string(),
         &free_fn_name.to_string(),
+        &clone_fn_name.to_string(),
     );
 
-    write_consumer_files(&type_name, consumer);
+    write_consumer_files(type_name, consumer);
 
     module_token_stream(
         module_name,
-        &type_name,
+        type_name,
         fields_ffi,
         &init_fn_name,
         &free_fn_name,
+        &clone_fn_name,
     )
 }
 
@@ -61,6 +63,7 @@ pub(super) fn build_custom(
 ) -> TokenStream {
     let init_fn_name = format_ident!("{}_init", &type_name.to_string().to_snake_case());
     let free_fn_name = format_ident!("{}_free", &type_name.to_string().to_snake_case());
+    let clone_fn_name = format_ident!("clone_{}", &type_name.to_string().to_snake_case());
     let custom_ffi =
         parsing::custom_ffi_types(custom_module_path, &type_name.to_string(), &init_fn_name);
 
@@ -70,6 +73,7 @@ pub(super) fn build_custom(
         custom_ffi.0.as_ref(),
         custom_ffi.1.as_ref(),
         &free_fn_name.to_string(),
+        &clone_fn_name.to_string(),
     );
 
     write_consumer_files(type_name, consumer);
@@ -107,12 +111,18 @@ fn write_consumer_files(type_name: &Ident, consumer: String) {
 
 /// Generate all the data for the FFI so that we can operate on it to produce both the FFI consumer
 /// wrapper and the tokenized module.
+/// 
+/// Returns
+/// 1. A `Vec<FieldFFI>` describing all of the fields of the struct.
+/// 1. An `Ident` for the FFI initializer function name.
+/// 1. An `Ident` for the FFI deinitializer function name.
+/// 1. An `Ident` for the clone function name.
 ///
 fn generate_ffi(
-    type_name: Ident,
+    type_name: &Ident,
     fields: &Fields,
     alias_map: &HashMap<Ident, Ident>,
-) -> (Vec<FieldFFI>, Ident, Ident) {
+) -> (Vec<FieldFFI>, Ident, Ident, Ident) {
     let fields_ffi = match fields {
         Fields::Named(named) => named,
         Fields::Unnamed(_) => panic!("Unnamed fields are not supported"),
@@ -126,6 +136,7 @@ fn generate_ffi(
         fields_ffi,
         format_ident!("{}_init", &type_name.to_string().to_snake_case()),
         format_ident!("{}_free", &type_name.to_string().to_snake_case()),
+        format_ident!("clone_{}", &type_name.to_string().to_snake_case()),
     )
 }
 
@@ -137,6 +148,7 @@ fn module_token_stream(
     fields_ffi: Vec<FieldFFI>,
     init_fn_name: &Ident,
     free_fn_name: &Ident,
+    clone_fn_name: &Ident,
 ) -> TokenStream {
     let (init_arguments, assignment_expressions, getter_fns) =
         fields_ffi
@@ -173,6 +185,11 @@ fn module_token_stream(
                     #assignment_expressions
                 };
                 Box::into_raw(Box::new(data))
+            }
+
+            #[no_mangle]
+            pub extern "C" fn #clone_fn_name(ptr: *const #type_name) -> *const #type_name {
+                unsafe { Box::into_raw(Box::new((&*ptr).clone())) }
             }
 
             #getter_fns

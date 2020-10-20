@@ -52,6 +52,17 @@ pub enum FieldType {
     Uuid,
 }
 
+/// The context in which a type is being referenced. Sometimes the mutability of a reference, or
+/// even the type it's exposed as is different depending on whether it's being returned to the
+/// consumer or passed in as an argument to a Rust function.
+///
+enum Context {
+    /// Type is being used as an argument to a Rust function.
+    Argument,
+    /// Type is being returned to the consumer.
+    Return,
+}
+
 static STRING: &str = "String";
 static DATETIME: &str = "NaiveDateTime";
 static UUID: &str = "Uuid";
@@ -144,9 +155,21 @@ impl FieldFFI {
 
     /// Returns the name of the type used for communicating this field's data across the FFI
     /// boundary.
+    /// 
+    /// When `mutable` is `true`, if `self` is exposed as a non-string reference type (such as a
+    /// `Box`ed struct or `Box`ed optional primitive), this will produce a token stream like
+    /// `*mut T`. This is mostly for the sake of the generated initializer, which takes mutable
+    /// pointers to indicate that the pointer will be consumed.
+    /// 
+    /// When `mutable` is `false`, if `self is exposed as a reference type, this will produce a
+    /// token stream like `*const T`.
     ///
     #[must_use]
-    pub fn ffi_type(&self) -> TokenStream {
+    fn ffi_type(&self, context: &Context) -> TokenStream {
+        let ptr_type = match context {
+            Context::Argument => quote!(*mut),
+            Context::Return => quote!(*const),
+        };
         match &self.field_type {
             FieldType::Boxed(inner) => {
                 // Replace the inner type for FFI with whatever the `expose_as` told us to use.
@@ -154,17 +177,15 @@ impl FieldFFI {
                 if self.vec {
                     let ident = format_ident!("FFIArray{}", inner);
                     quote!(#ident)
-                } else {                    
-                    quote!(*const #inner)
+                } else {
+                    quote!(#ptr_type #inner)
                 }
             }
             FieldType::DateTime => {
                 if self.vec {
                     quote!(FFIArrayTimeStamp)
                 } else {
-                    let mut t = format_ident!("TimeStamp");
-                    if self.option { t = format_ident!("Option{}", t) }
-                    quote!(#t)
+                    quote!(#ptr_type TimeStamp)
                 }
             }
             FieldType::Raw(inner) => {
@@ -174,8 +195,9 @@ impl FieldFFI {
                     let ident = format_ident!("FFIArray{}", inner.to_string().to_camel_case());
                     quote!(#ident)
                 } else if self.option {
-                    let ident = format_ident!("Option{}", inner.to_string().to_camel_case());
-                    quote!(#ident)
+                    // Option types are behind a pointer, because embedding structs in parameter
+                    // lists caused issues for Swift.
+                    quote!(#ptr_type #inner)
                 } else {
                     quote!(#inner)
                 }
@@ -184,13 +206,18 @@ impl FieldFFI {
                 if self.vec {
                     quote!(FFIArrayString)
                 } else {
+                    // Strings are always `*const`, unlike other reference types, because they're
+                    // managed by the caller (since there's already language support for
+                    // initializing a `String` from a view of foreign data, we don't need the
+                    // preliminary step of allocating the data in Rust, which means we don't need to
+                    // reclaim that memory here).
                     quote!(*const std::os::raw::c_char)
                 }
             }
         }
     }
 
-    /// An extern "C" function for returning the value of the field through the FFI. This takes a
+    /// An extern "C" function for returning the value of this field through the FFI. This takes a
     /// pointer to the struct and returns the field's value as an FFI-safe type, as in
     /// `pub extern "C" fn get_some_type_field(ptr: *const SomeType) -> FFIType`.
     ///
@@ -199,7 +226,7 @@ impl FieldFFI {
         let field_name = &self.field_name;
         let type_name = &self.type_name;
         let getter_name = &self.getter_name();
-        let ffi_type = &self.ffi_type();
+        let ffi_type = &self.ffi_type(&Context::Return);
         let conversion: TokenStream = if self.vec {
             if self.option {
                 quote!(data.#field_name.as_deref().into()) 
@@ -207,7 +234,7 @@ impl FieldFFI {
                 quote!((&*data.#field_name).into()) 
             }
         } else {
-            match self.field_type {
+            match &self.field_type {
                 FieldType::Boxed(_) => {
                     if self.option {
                         let mut return_value = quote!(f.clone());
@@ -233,14 +260,24 @@ impl FieldFFI {
                 }
                 FieldType::DateTime => {
                     if self.option {
-                        quote!(data.#field_name.as_ref().into())
+                        quote!(
+                            data.#field_name.as_ref().map_or(ptr::null(), |f| {
+                                Box::into_raw(Box::new(f.into()))
+                            })
+                        )
                     } else {
-                        quote!((&data.#field_name).into())
+                        quote!(Box::into_raw(Box::new((&data.#field_name).into())))
                     }
                 }
-                FieldType::Raw(_) => {
+                FieldType::Raw(inner) => {
                     if self.option {
-                        quote!(data.#field_name.as_ref().into())
+                        let boxer = format_ident!("option_{}_init", inner.to_string().to_snake_case());
+                        quote!(
+                            match data.#field_name {
+                                Some(data) => #boxer(true, data),
+                                None => #boxer(false, #inner::default()),
+                            }
+                        )
                     } else {
                         quote!(data.#field_name.clone().into())
                     }
@@ -279,7 +316,7 @@ impl FieldFFI {
     #[must_use]
     pub fn ffi_initializer_argument(&self) -> TokenStream {
         let field_name = &self.field_name;
-        let ffi_type = &self.ffi_type();
+        let ffi_type = &self.ffi_type(&Context::Argument);
         quote!(#field_name: #ffi_type,)
     }
 
@@ -307,13 +344,13 @@ impl FieldFFI {
                                 if #field_name.is_null() {
                                     None
                                 } else {
-                                    (&*#field_name).into()
+                                    (*#field_name).into()
                                 }
                             },
                         }
                     } else {
                         quote! {
-                            #field_name: unsafe { (&*#field_name).into() },
+                            #field_name: unsafe { (*#field_name).into() },
                         }
                     }
                 } else if self.option {
@@ -322,20 +359,40 @@ impl FieldFFI {
                             if #field_name.is_null() {
                                 None
                             } else {
-                                Some((*#field_name).clone())
+                                Some(*Box::from_raw(#field_name))
                             }
                         },
                     }
                 } else {
-                    quote!(#field_name: unsafe { (*#field_name).clone() },)
+                    quote!(#field_name: unsafe { *Box::from_raw(#field_name) },)
                 }
             }
-            // `DateTime` always uses `into` because it has special logic with `From` impls for
-            // everything.
-            FieldType::DateTime => quote!(#field_name: #field_name.into(),),
+            FieldType::DateTime => {
+                if self.option {
+                    quote! {
+                        #field_name: unsafe {
+                            if #field_name.is_null() {
+                                None
+                            } else {
+                                Some((&*Box::from_raw(#field_name)).into())
+                            }
+                        },
+                    }
+                } else {
+                    quote!(#field_name: unsafe { (&*Box::from_raw(#field_name)).into() },)
+                }
+            }
             FieldType::Raw(_) => {
                 if self.option {
-                    quote!(#field_name: #field_name.into(),)
+                    quote! {
+                        #field_name: unsafe {
+                            if #field_name.is_null() {
+                                None
+                            } else {
+                                Some(*Box::from_raw(#field_name))
+                            }
+                        },
+                    }
                 } else {
                     quote!(#field_name: #field_name,)
                 } 

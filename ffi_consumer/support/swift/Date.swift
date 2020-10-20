@@ -1,7 +1,7 @@
 extension FFIArrayTimeStamp: FFIArray {
-    typealias Value = TimeStamp
+    typealias Value = OpaquePointer?
 
-    static var defaultValue: Value { TimeStamp(secs: 0, nsecs: 0) }
+    static var defaultValue: Value { nil }
 
     static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {
         ffi_array_time_stamp_init(ptr, len)
@@ -12,21 +12,26 @@ extension FFIArrayTimeStamp: FFIArray {
     }
 }
 
-extension OptionTimeStamp: FFIOption {
-    typealias Value = TimeStamp
-    static var defaultValue: Value { TimeStamp(secs: 0, nsecs: 0) }
-
-    static func from(has_value: Bool, value: TimeStamp) -> OptionTimeStamp {
-        option_time_stamp_init(has_value, value)
+extension Optional where Wrapped == Date {
+    func toRust() -> OpaquePointer? {
+        switch self {
+        case let .some(value):
+            return value.toRust()
+        case .none:
+            return nil
+        }
     }
 
-    static func free(_ option: OptionTimeStamp) {
-        free_option_time_stamp(option)
+    static func fromRust(_ ptr: OpaquePointer?) -> Self {
+        guard let ptr = ptr else {
+            return .none
+        }
+        return Wrapped.fromRust(ptr)
     }
 }
 
 extension Date: NativeData {
-    typealias ForeignType = TimeStamp
+    typealias ForeignType = OpaquePointer
 
     static var defaultValue: Self { Self() }
 
@@ -34,19 +39,19 @@ extension Date: NativeData {
 
     func toRust() -> ForeignType {
         let (seconds, subSeconds) = modf(timeIntervalSince1970)
-        return ForeignType(secs: Int64(seconds), nsecs: UInt32(subSeconds * Self.nsecs_per_sec))
+        return time_stamp_init(Int64(seconds), UInt32(subSeconds * Self.nsecs_per_sec))
     }
 
     static func fromRust(_ foreignObject: ForeignType) -> Self {
-        let interval = Double(foreignObject.secs) + Double(Double(foreignObject.nsecs) / Self.nsecs_per_sec)
-        return Date(timeIntervalSince1970: interval)
+        let secs = get_time_stamp_secs(foreignObject)
+        let nsecs = get_time_stamp_nsecs(foreignObject)
+        let interval = Double(secs) + Double(Double(nsecs) / Self.nsecs_per_sec)
+        let date = Date(timeIntervalSince1970: interval)
+        time_stamp_free(foreignObject)
+        return date
     }
 }
 
 extension Date: NativeArrayData {
     typealias FFIArrayType = FFIArrayTimeStamp
-}
-
-extension Date: NativeOptionData {
-    typealias FFIOptionType = OptionTimeStamp
 }

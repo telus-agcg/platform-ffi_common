@@ -16,6 +16,7 @@ pub fn generate(
     fields_ffi: &[FieldFFI],
     init_fn_name: &str,
     free_fn_name: &str,
+    clone_fn_name: &str,
 ) -> String {
     let mut consumer = crate::header();
     let array_name = format!("FFIArray{}", type_name);
@@ -33,7 +34,7 @@ pub fn generate(
         &format!("ffi_array_{}_init", type_name.to_snake_case()),
         &format!("free_ffi_array_{}", type_name.to_snake_case()),
     ));
-    consumer.push_str(&consumer_base_impl(type_name));
+    consumer.push_str(&consumer_base_impl(type_name, clone_fn_name));
     consumer.push_str(&consumer_option_impl(type_name));
     consumer.push_str(&consumer_array_impl(type_name, &array_name));
     consumer
@@ -48,6 +49,7 @@ pub fn generate_custom(
     init_args: &[(syn::Ident, syn::Type)],
     getters: &[(syn::Ident, syn::Type)],
     free_fn_name: &str,
+    clone_fn_name: &str,
 ) -> String {
     let mut consumer = crate::header();
     let array_name = format!("FFIArray{}", type_name);
@@ -112,7 +114,7 @@ pub fn generate_custom(
         &format!("ffi_array_{}_init", type_name.to_snake_case()),
         &format!("free_ffi_array_{}", type_name.to_snake_case()),
     ));
-    consumer.push_str(&consumer_base_impl(type_name));
+    consumer.push_str(&consumer_base_impl(type_name, clone_fn_name));
     consumer.push_str(&consumer_option_impl(type_name));
     consumer.push_str(&consumer_array_impl(type_name, &array_name));
     consumer
@@ -248,7 +250,7 @@ extension {}: FFIArray {{
     )
 }
 
-fn consumer_base_impl(type_name: &str) -> String {
+fn consumer_base_impl(type_name: &str, clone_fn_name: &str) -> String {
     format!(
         r#"
 extension {}: NativeData {{
@@ -256,25 +258,43 @@ extension {}: NativeData {{
 
     static var defaultValue: Self {{ fatalError() }}
 
-    func toRust() -> ForeignType {{
-        return pointer
+    /// `toRust()` will clone this instance (in Rust) and return a pointer to it that can be used
+    /// when calling a Rust function that takes ownership of an instance (like an initializer with a
+    /// parameter of this type).
+    internal func toRust() -> ForeignType {{
+        return {}(pointer)
     }}
 
-    static func fromRust(_ foreignObject: ForeignType) -> Self {{
+    /// Initializes an instance of this type from a pointer to an instance of the Rust type.
+    internal static func fromRust(_ foreignObject: ForeignType) -> Self {{
         return Self(foreignObject!)
     }}
 }}
 "#,
-        type_name
+        type_name, clone_fn_name
     )
 }
 
 fn consumer_option_impl(type_name: &str) -> String {
     format!(
         r#"
-extension {}: NativeOptionData {{
-    typealias FFIOptionType = OpaquePointer?
-}}
+        extension Optional where Wrapped == {} {{
+            func toRust() -> OpaquePointer? {{
+                switch self {{
+                case let .some(value):
+                    return value.toRust()
+                case .none:
+                    return nil
+                }}
+            }}
+
+            static func fromRust(_ ptr: OpaquePointer?) -> Self {{
+                guard let ptr = ptr else {{
+                    return .none
+                }}
+                return Wrapped.fromRust(ptr)
+            }}
+        }}
 "#,
         type_name
     )

@@ -172,43 +172,28 @@ unallocated memory if, for example, you pass an array that represents the `None`
                 }
             }
 
-            #[doc = "An FFI-safe representation of an optional type."]
-            #[repr(C)]
-            #[derive(Clone, Copy, Debug)]
-            pub struct [<Option $t:camel>] {
-                #[doc = "True if there's a valid `value`, otherwise false. In the case of false, `value` must be ignored."]
-                pub has_value: bool,
-                #[doc = "The wrapped value when `has_value` is `true`. This should be considered garbage (i.e., not read) by callers when `has_value` is false."]
-                pub value: $t,
-            }
-
             #[doc = """
-Initialize an `Option*` from across the FFI boundary. When `has_value` is `false`, `value` will be
-ignored.
+Initialize an optional value type from across the FFI boundary. When `has_value` is `false`, `value`
+will be ignored and the return value will be a null pointer. When has_value is `true`, a pointer to
+a Rust-managed instance of `value` will be returned.
 
 # Safety
 
-You must pass the returned `Option*` object to the matching `free_option_*` function once you're
-finished with it on the consumer side.
+If the returned pointer is not null, you must pass it to the matching `free_option_*` function once
+you're finished with it on the consumer side. Otherwise you will leak memory.
             """]
             #[no_mangle]
-            pub extern "C" fn [<option_ $t:snake _init>](has_value: bool, value: $t) -> [<Option $t:camel>] {
-                if has_value {
-                    [<Option $t:camel>] {
-                        has_value: true,
-                        value,
-                    }
+            pub extern "C" fn [<option_ $t:snake _init>](has_value: bool, value: $t) -> *const $t {
+                 if has_value {
+                    Box::into_raw(Box::new(value))
                 } else {
-                    [<Option $t:camel>] {
-                        has_value: false,
-                        value: $t::default(),
-                    }
+                    std::ptr::null()   
                 }
             }
 
             #[allow(clippy::missing_const_for_fn)]
             #[doc = """
-Pass an `Option*` to allow Rust to reclaim the memory allocated for the object.
+Pass a pointer to an optional primitive to allow Rust to reclaim the memory allocated for the object.
 
 # Safety
 
@@ -216,32 +201,13 @@ We're assuming that the memory in the `option` you give us was allocated by Rust
 with an object created on the other side of the FFI boundary; that is undefined behavior.
 
 You **must not** access `option` after passing it to this method.
+
+It's safe to call this with a null pointer.
 """]
             #[no_mangle]
-            pub extern "C" fn [<free_option_ $t:snake>](_option: [<Option $t:camel>]) { }
-
-            impl From<Option<&$t>> for [<Option $t:camel>] {
-                fn from(opt: Option<&$t>) -> Self {
-                    match opt {
-                        Some(s) => Self {
-                            has_value: true,
-                            value: s.clone(),
-                        },
-                        None => Self {
-                            has_value: false,
-                            value: $t::default(),
-                        }
-                    }
-                }
-            }
-
-            impl From<[<Option $t:camel>]> for Option<$t> {
-                fn from(opt: [<Option $t:camel>]) -> Self {
-                    if opt.has_value {
-                        Some(opt.value)
-                    } else {
-                        None
-                    }
+            pub unsafe extern "C" fn [<free_option_ $t:snake>](option: *const $t) {
+                if !option.is_null() {
+                    let _ = Box::from_raw(option as *mut $t);
                 }
             }
         }
@@ -294,6 +260,7 @@ it (i.e., when you've copied it into native memory, displayed it, whatever you'r
 side of the FFI boundary) so we can take care of those steps.
             """]
             #[repr(C)]
+            #[allow(missing_copy_implementations)]
             #[derive(Clone, Debug)]
             pub struct [<FFIArray $t:camel>] {
                 #[doc = "Pointer to the first element in the array."]
@@ -390,9 +357,7 @@ simplify memory management.
                     if array.ptr.is_null() {
                         None
                     } else {
-                        unsafe {
-                            Some(Vec::from(array))
-                        }
+                        Some(Vec::from(array))
                     }
                 }
             }
