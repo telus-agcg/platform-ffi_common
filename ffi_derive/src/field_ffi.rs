@@ -1,7 +1,6 @@
 use crate::{parsing, parsing::WrappingType};
 use ffi_common::{codegen_helpers, codegen_helpers::FieldFFI};
 use heck::{CamelCase, SnakeCase};
-use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashMap;
 use syn::{Field, Ident};
@@ -59,25 +58,6 @@ fn resolve_type_alias(field_type: &Ident, alias_map: &HashMap<Ident, Ident>) -> 
     }
 }
 
-/// Code for getting a `Uuid` from an FFI string.
-fn uuid_from_c(field_name: &Ident) -> TokenStream {
-    quote! {
-        unsafe {
-            Uuid::parse_str(&CStr::from_ptr(#field_name).to_string_lossy()).unwrap()
-        }
-    }
-}
-
-/// Code for getting a `String` from an FFI string.
-fn string_from_c(field_name: &Ident) -> TokenStream {
-    quote! {
-        unsafe {
-            CStr::from_ptr(#field_name).
-            to_string_lossy().into_owned()
-        }
-    }
-}
-
 /// For a string-like field (a `String`, `Uuid`, etc.), including any supported `WrappingType`, this
 /// generates the following:
 /// 1. An initializer argument of the field's name and its FFI-safe type.
@@ -102,9 +82,9 @@ fn generate_string_ffi(
             let ffi_type = quote! { *const c_char };
             argument = quote!(#field_name: #ffi_type,);
             let parse_some = if is_uuid_field {
-                uuid_from_c(field_name)
+                quote!(ffi_common::string::uuid_from_c(#field_name))
             } else {
-                string_from_c(field_name)
+                quote!(ffi_common::string::string_from_c(#field_name))
             };
             assignment_expression = quote! {
                 #field_name: if #field_name.is_null() {
@@ -150,9 +130,9 @@ fn generate_string_ffi(
             let ffi_type = quote! { *const c_char };
             argument = quote!( #field_name: #ffi_type, );
             let parse_field = if is_uuid_field {
-                uuid_from_c(field_name)
+                quote!(ffi_common::string::uuid_from_c(#field_name))
             } else {
-                string_from_c(field_name)
+                quote!(ffi_common::string::string_from_c(#field_name))
             };
             assignment_expression = quote!(#field_name: #parse_field,);
             getter_name = getter_ident(type_name, field_name, false);

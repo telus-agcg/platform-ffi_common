@@ -53,7 +53,7 @@ macro_rules! try_or_set_error {
     };
 
     ($expr:expr) => {
-        try_or_set_error!($expr, std::ptr::null())
+        $crate::try_or_set_error!($expr, std::ptr::null())
     };
 }
 

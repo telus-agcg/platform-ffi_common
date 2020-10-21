@@ -236,10 +236,26 @@ pub extern "C" fn free_ffi_array_string(array: FFIArrayString) {
 #[macro_export]
 macro_rules! ffi_string {
     ($string:expr) => {{
-        ffi_common::error::clear_last_err_msg();
-        let c_string = try_or_set_error!(CString::new($string).map(std::ffi::CString::into_raw));
+        $crate::error::clear_last_err_msg();
+        let c_string = $crate::try_or_set_error!(
+            std::ffi::CString::new($string).map(std::ffi::CString::into_raw)
+        );
         c_string
     }};
+}
+
+/// Converts an FFI string (a `*const c_char`) to a `Uuid`.
+///
+#[must_use]
+pub fn uuid_from_c(ptr: *const c_char) -> Uuid {
+    unsafe { Uuid::parse_str(&CStr::from_ptr(ptr).to_string_lossy()).unwrap() }
+}
+
+/// Converts an FFI string (a `*const c_char`) to a `String`.
+///
+#[must_use]
+pub fn string_from_c(ptr: *const c_char) -> String {
+    unsafe { CStr::from_ptr(ptr).to_string_lossy().into_owned() }
 }
 
 /// Free a string that was created in Rust.

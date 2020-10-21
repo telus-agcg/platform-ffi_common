@@ -1,15 +1,10 @@
 //!
 //! Tests that cover accessing fields of various types through the derived FFI getters.
-//! 
+//!
 
 use chrono::NaiveDateTime;
-use ffi_common::{
-    self, datetime::FFIArrayTimeStamp, ffi_string, string::FFIArrayString, try_or_set_error,
-};
-use std::{
-    convert::TryInto,
-    ffi::{CStr, CString},
-};
+use ffi_common::{self, datetime::FFIArrayTimeStamp, ffi_string, string::FFIArrayString};
+use std::{convert::TryInto, ffi::CStr};
 use uuid::Uuid;
 
 #[repr(C)]

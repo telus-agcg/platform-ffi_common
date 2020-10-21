@@ -6,6 +6,7 @@ use proc_macro2::TokenStream;
 use syn::Ident;
 
 /// Represents the components of the generated FFI for a field.
+#[derive(Debug)]
 pub struct FieldFFI {
     /// The field for which this interface is being generated.
     ///
