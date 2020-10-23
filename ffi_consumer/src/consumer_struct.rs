@@ -4,146 +4,266 @@
 //! native getters for reading properties from the Rust struct.
 //!
 
-use ffi_common::codegen_helpers::FieldFFI;
-use heck::{MixedCase, SnakeCase};
+use ffi_internals::{field_ffi::FieldFFI, native_type_data, struct_ffi::StructFFI};
+use heck::{CamelCase, MixedCase, SnakeCase};
 
-/// Returns a string for a consumer type that wraps `type_name`. This needs to be written to a file
-/// that can be copied to the consumer library/application/whatever.
+/// Contains the data required to generate a consumer type, and associated functions for doing so.
 ///
-#[must_use]
-pub fn generate(
-    type_name: &str,
-    fields_ffi: &[FieldFFI],
-    init_fn_name: &str,
-    free_fn_name: &str,
-    clone_fn_name: &str,
-) -> String {
-    let mut consumer = crate::header();
-    let array_name = format!("FFIArray{}", type_name);
-    let (consumer_init_args, ffi_init_args, consumer_getters) = expand_fields(&*fields_ffi);
-    consumer.push_str(&consumer_type(
-        type_name,
-        &consumer_init_args,
-        &ffi_init_args,
-        &consumer_getters,
-        init_fn_name,
-        free_fn_name,
-    ));
-    consumer.push_str(&ffi_array_impl(
-        &array_name,
-        &format!("ffi_array_{}_init", type_name.to_snake_case()),
-        &format!("free_ffi_array_{}", type_name.to_snake_case()),
-    ));
-    consumer.push_str(&consumer_base_impl(type_name, clone_fn_name));
-    consumer.push_str(&consumer_option_impl(type_name));
-    consumer.push_str(&consumer_array_impl(type_name, &array_name));
-    consumer
+pub struct ConsumerStruct {
+    /// The name of the type name.
+    ///
+    pub type_name: String,
+    /// The arguments for the consumer type's initializer.
+    ///
+    consumer_init_args: String,
+    /// The arguments the consumer needs to pass to the FFI initializer.
+    ///
+    ffi_init_args: String,
+    /// The consumer getters (readonly variables that wrap calls to Rust functions for reading
+    /// struct field values).
+    ///
+    consumer_getters: String,
+    /// The name of the Rust type's initializer function.
+    ///
+    pub init_fn_name: String,
+    /// The name of the Rust type's free function.
+    ///
+    pub free_fn_name: String,
+    /// The name of the Rust type's clone function.
+    ///
+    pub clone_fn_name: String,
 }
 
-/// Generates a consumer wrapper for a type that has a custom FFI implementation.
-///
-#[must_use]
-pub fn generate_custom(
-    type_name: &str,
-    init_fn_name: &str,
-    init_args: &[(syn::Ident, syn::Type)],
-    getters: &[(syn::Ident, syn::Type)],
-    free_fn_name: &str,
-    clone_fn_name: &str,
-) -> String {
-    let mut consumer = crate::header();
-    let array_name = format!("FFIArray{}", type_name);
+impl ConsumerStruct {
+    fn array_name(&self) -> String {
+        format!("FFIArray{}", self.type_name.to_camel_case())
+    }
 
-    let arg_count = init_args.len();
-    let (consumer_init_args, ffi_init_args) = init_args.iter().enumerate().fold(
-        (String::new(), String::new()),
-        |mut acc, (index, (i, t))| {
-            // Swift rejects trailing commas on argument lists.
-            let trailing_punctuation = if index < arg_count - 1 { ",\n" } else { "" };
-            // This looks like `foo: Bar,`.
-            acc.0.push_str(&format!(
-                "{:<8}: {}{}",
-                i.to_string(),
-                consumer_type_for_ffi_type(t),
-                trailing_punctuation
-            ));
-            // This looks like `foo.toRust(),`.
-            acc.1.push_str(&format!(
-                "{:<12}.toRust(){}",
-                i.to_string(),
-                trailing_punctuation
+    fn array_init(&self) -> String {
+        format!("ffi_array_{}_init", self.type_name.to_snake_case())
+    }
+
+    fn array_free(&self) -> String {
+        format!("ffi_array_{}_free", self.type_name.to_snake_case())
+    }
+
+    /// Generates a wrapper for a struct so that the native interface in the consumer's language
+    /// correctly wraps the generated FFI module.
+    ///
+    fn type_definition(&self) -> String {
+        format!(
+            r#"
+public final class {class} {{
+    private let pointer: OpaquePointer
+
+    public init(
+{args}
+    ) {{
+        self.pointer = {ffi_init}(
+{ffi_args}
+        )
+    }}
+
+    private init(_ pointer: OpaquePointer) {{
+        self.pointer = pointer
+    }}
+
+    deinit {{
+        {free}(pointer)
+    }}
+{getters}
+}}
+"#,
+            class = self.type_name,
+            args = self.consumer_init_args,
+            ffi_init = self.init_fn_name,
+            ffi_args = self.ffi_init_args,
+            free = self.free_fn_name,
+            getters = self.consumer_getters
+        )
+    }
+
+    fn ffi_array_impl(&self) -> String {
+        format!(
+            r#"
+extension {array_name}: FFIArray {{
+    typealias Value = OpaquePointer?
+
+    static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
+        {array_init}(ptr, len)
+    }}
+
+    static func free(_ array: Self) {{
+        {array_free}(array)
+    }}
+}}
+"#,
+            array_name = self.array_name(),
+            array_init = self.array_init(),
+            array_free = self.array_free(),
+        )
+    }
+
+    fn native_data_impl(&self) -> String {
+        format!(
+            r#"
+extension {}: NativeData {{
+    typealias ForeignType = OpaquePointer?
+
+    /// `toRust()` will clone this instance (in Rust) and return a pointer to it that can be used
+    /// when calling a Rust function that takes ownership of an instance (like an initializer with a
+    /// parameter of this type).
+    internal func toRust() -> ForeignType {{
+        return {}(pointer)
+    }}
+
+    /// Initializes an instance of this type from a pointer to an instance of the Rust type.
+    internal static func fromRust(_ foreignObject: ForeignType) -> Self {{
+        return Self(foreignObject!)
+    }}
+}}
+"#,
+            self.type_name, self.clone_fn_name,
+        )
+    }
+
+    fn option_impl(&self) -> String {
+        format!(
+            r#"
+extension Optional where Wrapped == {} {{
+    func toRust() -> OpaquePointer? {{
+        switch self {{
+        case let .some(value):
+            return value.toRust()
+        case .none:
+            return nil
+        }}
+    }}
+
+    static func fromRust(_ ptr: OpaquePointer?) -> Self {{
+        guard let ptr = ptr else {{
+            return .none
+        }}
+        return Wrapped.fromRust(ptr)
+    }}
+}}
+"#,
+            self.type_name
+        )
+    }
+
+    fn array_impl(&self) -> String {
+        format!(
+            r#"
+extension {}: NativeArrayData {{
+    typealias FFIArrayType = {}
+}}
+"#,
+            self.type_name,
+            self.array_name()
+        )
+    }
+}
+
+impl ConsumerStruct {
+    /// Returns a `ConsumerStruct` for a type that defines its own custom FFI.
+    ///
+    #[must_use]
+    pub fn custom(
+        type_name: String,
+        init_fn_name: String,
+        init_args: &[(syn::Ident, syn::Type)],
+        getters: &[(syn::Ident, syn::Type)],
+        free_fn_name: String,
+        clone_fn_name: String,
+    ) -> Self {
+        let arg_count = init_args.len();
+        let (consumer_init_args, ffi_init_args) = init_args.iter().enumerate().fold(
+            (String::new(), String::new()),
+            |mut acc, (index, (i, t))| {
+                // Swift rejects trailing commas on argument lists.
+                let trailing_punctuation = if index < arg_count - 1 { ",\n" } else { "" };
+                // This looks like `foo: Bar,`.
+                let consumer_type =
+                    native_type_data::native_type_data_for_custom(t).consumer_type(None);
+                acc.0.push_str(&format!(
+                    "        {}: {}{}",
+                    i.to_string(),
+                    consumer_type,
+                    trailing_punctuation
+                ));
+                // This looks like `foo.toRust(),`.
+                acc.1.push_str(&format!(
+                    "            {}.toRust(){}",
+                    i.to_string(),
+                    trailing_punctuation
+                ));
+                acc
+            },
+        );
+
+        let type_prefix = format!("get_{}_", type_name.to_snake_case());
+        let consumer_getters = getters.iter().fold(String::new(), |mut acc, (i, t)| {
+            let consumer_type =
+                native_type_data::native_type_data_for_custom(t).consumer_type(None);
+            let consumer_getter_name = i
+                .to_string()
+                .split(&type_prefix)
+                .last()
+                .unwrap()
+                .to_string()
+                .to_mixed_case();
+            acc.push_str(&format!(
+                "
+    public var {}: {} {{
+        {}.fromRust({}(pointer))
+    }}
+    ",
+                consumer_getter_name,
+                consumer_type,
+                consumer_type,
+                i.to_string()
             ));
             acc
-        },
-    );
+        });
 
-    let type_prefix = format!("get_{}_", type_name.to_snake_case());
-    let consumer_getters = getters.iter().fold(String::new(), |mut acc, (i, t)| {
-        let consumer_type = consumer_type_for_ffi_type(t);
-        let consumer_getter_name = i
-            .to_string()
-            .split(&type_prefix)
-            .last()
-            .unwrap()
-            .to_string()
-            .to_mixed_case();
-        acc.push_str(&format!(
-            "public var {:<4}: {} {{
-{:<8}.fromRust({}(pointer))
-}}
-
-",
-            consumer_getter_name,
-            consumer_type,
-            consumer_type,
-            i.to_string()
-        ));
-        acc
-    });
-
-    consumer.push_str(&consumer_type(
-        type_name,
-        &consumer_init_args,
-        &ffi_init_args,
-        &consumer_getters,
-        init_fn_name,
-        free_fn_name,
-    ));
-    consumer.push_str(&ffi_array_impl(
-        &array_name,
-        &format!("ffi_array_{}_init", type_name.to_snake_case()),
-        &format!("free_ffi_array_{}", type_name.to_snake_case()),
-    ));
-    consumer.push_str(&consumer_base_impl(type_name, clone_fn_name));
-    consumer.push_str(&consumer_option_impl(type_name));
-    consumer.push_str(&consumer_array_impl(type_name, &array_name));
-    consumer
+        Self {
+            type_name,
+            consumer_init_args,
+            ffi_init_args,
+            consumer_getters,
+            init_fn_name,
+            free_fn_name,
+            clone_fn_name,
+        }
+    }
 }
 
-fn consumer_type_for_ffi_type(ffi_type: &syn::Type) -> String {
-    match ffi_type {
-        syn::Type::Path(path) => {
-            // TODO: This is extra terrible/hacky, won't work for many cases. We need DEV-13175.
-            ffi_common::codegen_helpers::consumer_type_for(
-                &path.path.segments.first().unwrap().ident.to_string(),
-                false,
-            )
+impl From<&StructFFI> for ConsumerStruct {
+    fn from(struct_ffi: &StructFFI) -> Self {
+        let (consumer_init_args, ffi_init_args, consumer_getters) =
+            expand_fields(&*struct_ffi.fields);
+        Self {
+            type_name: struct_ffi.name.to_string(),
+            consumer_init_args,
+            ffi_init_args,
+            consumer_getters,
+            init_fn_name: struct_ffi.init_fn_name().to_string(),
+            free_fn_name: struct_ffi.free_fn_name().to_string(),
+            clone_fn_name: struct_ffi.clone_fn_name().to_string(),
         }
-        syn::Type::Ptr(p) => {
-            if let syn::Type::Path(path) = p.elem.as_ref() {
-                let type_name = path.path.segments.first().unwrap().ident.to_string();
-                if type_name == "c_char" {
-                    "String".to_string()
-                } else {
-                    type_name
-                }
-            } else {
-                panic!("No segment in {:?}?", p);
-            }
-        }
-        _ => {
-            panic!("Unsupported type: {:?}", ffi_type);
-        }
+    }
+}
+
+impl From<ConsumerStruct> for String {
+    fn from(consumer: ConsumerStruct) -> Self {
+        let mut result = crate::header();
+        result.push_str(&consumer.type_definition());
+        result.push_str(&consumer.ffi_array_impl());
+        result.push_str(&consumer.native_data_impl());
+        result.push_str(&consumer.option_impl());
+        result.push_str(&consumer.array_impl());
+        result
     }
 }
 
@@ -162,151 +282,33 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
             };
             // This looks like `foo: Bar,`.
             acc.0.push_str(&format!(
-                "{:<8}: {}{}",
-                f.field_name.to_string(),
-                f.consumer_type(),
-                trailing_punctuation
+                "        {field}: {type_name}{punct}",
+                field = f.field_name.to_string(),
+                type_name = f
+                    .native_type_data
+                    .consumer_type(f.attributes.expose_as_ident()),
+                punct = trailing_punctuation
             ));
             // This looks like `foo.toRust(),`.
             acc.1.push_str(&format!(
-                "{:<12}.toRust(){}",
+                "            {}.toRust(){}",
                 f.field_name.to_string(),
                 trailing_punctuation
             ));
             // This looks like `public var foo: Bar { Bar.fromRust(get_bar_foo(pointer) }`.
             acc.2.push_str(&format!(
-                "public var {:<4}: {} {{
-{:<8}.fromRust({}(pointer))
-}}
-
-",
-                f.field_name.to_string(),
-                f.consumer_type(),
-                f.consumer_type(),
-                f.getter_name().to_string()
+                r#"
+    public var {field}: {type_name} {{
+        {type_name}.fromRust({getter}(pointer))
+    }}
+"#,
+                field = f.field_name.to_string(),
+                type_name = f
+                    .native_type_data
+                    .consumer_type(f.attributes.expose_as_ident()),
+                getter = f.getter_name().to_string()
             ));
             acc
         },
-    )
-}
-
-/// Generates a wrapper for a struct so that the native interface in the consumer's language
-/// correctly wraps the generated FFI module.
-///
-fn consumer_type(
-    type_name: &str,
-    consumer_init_args: &str,
-    ffi_init_args: &str,
-    consumer_getters: &str,
-    init_fn_name: &str,
-    free_fn_name: &str,
-) -> String {
-    let wrapper = format!(
-        r#"public final class {} {{
-    private let pointer: OpaquePointer
-
-    public init(
-{:<4}
-    ) {{
-        self.pointer = {}(
-{:<12}
-        )
-    }}
-
-    private init(_ pointer: OpaquePointer) {{
-        self.pointer = pointer
-    }}
-
-    deinit {{
-{:<8}(pointer)
-    }}
-
-{:<4}}}
-"#,
-        type_name, consumer_init_args, init_fn_name, ffi_init_args, free_fn_name, consumer_getters
-    );
-
-    wrapper
-}
-
-fn ffi_array_impl(array_name: &str, array_init_fn: &str, array_free_fn: &str) -> String {
-    format!(
-        r#"
-extension {}: FFIArray {{
-    typealias Value = OpaquePointer?
-
-    static var defaultValue: Value {{ nil }}
-
-    static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
-{:<8}(ptr, len)
-    }}
-
-    static func free(_ array: Self) {{
-{:<8}(array)
-    }}
-}}
-"#,
-        array_name, array_init_fn, array_free_fn
-    )
-}
-
-fn consumer_base_impl(type_name: &str, clone_fn_name: &str) -> String {
-    format!(
-        r#"
-extension {}: NativeData {{
-    typealias ForeignType = OpaquePointer?
-
-    static var defaultValue: Self {{ fatalError() }}
-
-    /// `toRust()` will clone this instance (in Rust) and return a pointer to it that can be used
-    /// when calling a Rust function that takes ownership of an instance (like an initializer with a
-    /// parameter of this type).
-    internal func toRust() -> ForeignType {{
-        return {}(pointer)
-    }}
-
-    /// Initializes an instance of this type from a pointer to an instance of the Rust type.
-    internal static func fromRust(_ foreignObject: ForeignType) -> Self {{
-        return Self(foreignObject!)
-    }}
-}}
-"#,
-        type_name, clone_fn_name
-    )
-}
-
-fn consumer_option_impl(type_name: &str) -> String {
-    format!(
-        r#"
-        extension Optional where Wrapped == {} {{
-            func toRust() -> OpaquePointer? {{
-                switch self {{
-                case let .some(value):
-                    return value.toRust()
-                case .none:
-                    return nil
-                }}
-            }}
-
-            static func fromRust(_ ptr: OpaquePointer?) -> Self {{
-                guard let ptr = ptr else {{
-                    return .none
-                }}
-                return Wrapped.fromRust(ptr)
-            }}
-        }}
-"#,
-        type_name
-    )
-}
-
-fn consumer_array_impl(type_name: &str, array_name: &str) -> String {
-    format!(
-        r#"
-extension {}: NativeArrayData {{
-    typealias FFIArrayType = {}
-}}
-"#,
-        type_name, array_name
     )
 }

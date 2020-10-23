@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add `datetime.rs` for representing timestamps across the FFI boundary.
 - Add `macros.rs` for generating FFI types and impls for primitive and opaque types.
 - Use those macros to generate FFI types and impls for numeric primitives, strings, and `DateTime`s.
-- Add `FFIArrayString` struct, related `From` impl and `free_ffi_array_string` for passing
+- Add `FFIArrayString` struct, related `From` impl and `ffi_array_string_free` for passing
 collections of strings across the boundary.
 - Add `ffi_derive::FFI` macro, with support for generating an interface for:
     - `String`

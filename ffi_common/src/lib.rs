@@ -23,7 +23,6 @@
 )]
 #![forbid(missing_docs, unused_extern_crates, unused_imports)]
 
-pub mod codegen_helpers;
 #[macro_use]
 pub mod error;
 pub mod datetime;

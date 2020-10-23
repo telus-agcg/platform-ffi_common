@@ -3,8 +3,6 @@ import Foundation
 // MARK: - FFI Protocols
 protocol FFIData {
     associatedtype Value
-
-    static var defaultValue: Value { get }
 }
 
 /// Describes the structure of all `FFIArray*` types, relying on `Value` for the size of their
@@ -22,8 +20,6 @@ protocol FFIArray: FFIData {
 // MARK: - Native protocols
 protocol NativeData {
     associatedtype ForeignType
-
-    static var defaultValue: Self { get }
 
     // Base type
     func toRust() -> ForeignType

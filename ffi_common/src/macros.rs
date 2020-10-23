@@ -49,7 +49,7 @@ places where null is really possible.)
 # Safety
 
 The collection represented by this type needs to be reclaimed by Rust with `Vec::from_raw_parts` so
-it can be deallocated safely. Pass this struct to `free_ffi_array_*` when you're done with it (i.e.,
+it can be deallocated safely. Pass this struct to `ffi_array_*_free` when you're done with it (i.e.,
 when you've copied it into native memory, displayed it, whatever you're doing on the other side of
 the FFI boundary) so we can take care of those steps.
             """]
@@ -120,7 +120,7 @@ unallocated memory if, for example, you pass an array that represents the `None`
 `Option<Vec<T>>`.
             """]
             #[no_mangle]
-            pub extern "C" fn [<free_ffi_array_ $t:snake>](array: [<FFIArray $t:camel>]) {
+            pub extern "C" fn [<ffi_array_ $t:snake _free>](array: [<FFIArray $t:camel>]) {
                 if array.ptr.is_null() {
                     return;
                 }
@@ -179,7 +179,7 @@ a Rust-managed instance of `value` will be returned.
 
 # Safety
 
-If the returned pointer is not null, you must pass it to the matching `free_option_*` function once
+If the returned pointer is not null, you must pass it to the matching `option_*_free` function once
 you're finished with it on the consumer side. Otherwise you will leak memory.
             """]
             #[no_mangle]
@@ -187,7 +187,7 @@ you're finished with it on the consumer side. Otherwise you will leak memory.
                  if has_value {
                     Box::into_raw(Box::new(value))
                 } else {
-                    std::ptr::null()   
+                    std::ptr::null()
                 }
             }
 
@@ -205,7 +205,7 @@ You **must not** access `option` after passing it to this method.
 It's safe to call this with a null pointer.
 """]
             #[no_mangle]
-            pub unsafe extern "C" fn [<free_option_ $t:snake>](option: *const $t) {
+            pub unsafe extern "C" fn [<option_ $t:snake _free>](option: *const $t) {
                 if !option.is_null() {
                     let _ = Box::from_raw(option as *mut $t);
                 }
@@ -255,7 +255,7 @@ places where null is really possible.)
 
 This will need to be brought back into rust ownership in two ways; first, the vec needs to
 be reclaimed with `Vec::from_raw_parts`; second, each element of the vec will need
-to be reclaimed with `Box::from_raw`. Pass this struct to `free_ffi_array_*` when you're done with
+to be reclaimed with `Box::from_raw`. Pass this struct to `ffi_array_*_free` when you're done with
 it (i.e., when you've copied it into native memory, displayed it, whatever you're doing on the other
 side of the FFI boundary) so we can take care of those steps.
             """]
@@ -378,7 +378,7 @@ unallocated memory if, for example, you pass an array that represents the `None`
 `Option<Vec<T>>`.
             """]
             #[no_mangle]
-            pub extern "C" fn [<free_ffi_array_ $t:snake>](array: [<FFIArray $t:camel>]) {
+            pub extern "C" fn [<ffi_array_ $t:snake _free>](array: [<FFIArray $t:camel>]) {
                 if array.ptr.is_null() {
                     return;
                 }

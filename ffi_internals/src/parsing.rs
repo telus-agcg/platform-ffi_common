@@ -29,7 +29,7 @@ pub(super) enum WrappingType {
 
 /// Returns true if an element of `attrs` marks this item as `repr(C)`. Otherwise, false.
 ///
-pub(super) fn is_repr_c(attrs: &[Attribute]) -> bool {
+pub fn is_repr_c(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.parse_meta().map_or(false, |m| {
             if let List(l) = m {
@@ -52,7 +52,7 @@ pub(super) fn is_repr_c(attrs: &[Attribute]) -> bool {
 /// through a struct's fields, all we see is `GrowerId`, `CommodityId`, etc., when we really need to
 /// know that it's a `Uuid` or a `u16` so that we can generate the right FFI for it.
 ///
-pub(super) fn type_alias_map(paths: &[String]) -> HashMap<Ident, Ident> {
+pub fn type_alias_map(paths: &[String]) -> HashMap<Ident, Ident> {
     paths.iter().flat_map(|path| {
         let mut file = File::open(path).expect("Unable to open file");
         let mut src = String::new();
@@ -89,12 +89,12 @@ pub(super) fn type_alias_map(paths: &[String]) -> HashMap<Ident, Ident> {
 /// Pretty gross, but should get nuked in DEV-13175 in favor parsing the FFI module into a type.
 ///
 #[allow(clippy::complexity)]
-pub(super) fn custom_ffi_types(
+pub fn custom_ffi_types(
     path: &str,
     type_name: &str,
     expected_init: &Ident,
 ) -> (Vec<(Ident, Type)>, Vec<(Ident, Type)>) {
-    let mut file = File::open(path).expect("Unable to open file");
+    let mut file = File::open(path).expect(&format!("Unable to open file {:?}", path));
     let mut src = String::new();
     let _ = file.read_to_string(&mut src).expect("Unable to read file");
 
@@ -152,7 +152,10 @@ pub(super) fn custom_ffi_types(
             if &f.sig.ident == expected_init {
                 return None;
             }
-            // TODO: Assert that the one and only argument is a `ptr: *const type_name`.
+            let expected_arg = syn::parse_str::<syn::FnArg>(&format!("ptr: *const {}", type_name)).unwrap();
+            if f.sig.inputs.len() != 1 || f.sig.inputs.first().unwrap() != &expected_arg {
+                panic!("Non-initializer functions in the custom FFI module must take exactly one `ptr: *const TypeName` argument. Found:\n\n {:?}", f.sig.inputs);
+            }
             if let syn::ReturnType::Type(_, return_type) = &f.sig.output {
                 return Some((f.sig.ident.clone(), *return_type.clone()));
             }
@@ -179,12 +182,12 @@ fn parse_ffi_meta(attr: &Attribute) -> Result<Vec<NestedMeta>, ()> {
     }
 }
 
-pub(super) struct StructAttributes {
-    pub(super) alias_paths: Vec<String>,
-    pub(super) custom_path: Option<String>,
+pub struct StructAttributes {
+    pub alias_paths: Vec<String>,
+    pub custom_path: Option<String>,
 }
 
-pub(super) fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
+pub fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
     let mut alias_paths = vec![];
     let mut custom_path: Option<String> = None;
     for meta_item in attrs.iter().flat_map(parse_ffi_meta).flatten() {
@@ -208,14 +211,14 @@ pub(super) fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
     }
 }
 
-pub(super) fn parse_fn_attributes(attrs: &[Attribute]) -> ffi_common::codegen_helpers::FieldAttributes {
-    let mut expose_as: Option<Ident> = None;
+pub(super) fn parse_field_attributes(attrs: &[Attribute]) -> crate::field_ffi::FieldAttributes {
+    let mut expose_as: Option<syn::Path> = None;
     let mut raw = false;
     for meta_item in attrs.iter().flat_map(parse_ffi_meta).flatten() {
         match &meta_item {
             Meta(NameValue(m)) if m.path.is_ident("expose_as") => {
                 if let Lit::Str(lit) = &m.lit {
-                    expose_as = Some(quote::format_ident!("{}", lit.value()));
+                    expose_as = Some(syn::parse_str(&lit.value()).expect("Not a valid path"));
                 }
             }
             Meta(Path(p)) if p.is_ident("raw") => {
@@ -226,10 +229,7 @@ pub(super) fn parse_fn_attributes(attrs: &[Attribute]) -> ffi_common::codegen_he
             }
         }
     }
-    ffi_common::codegen_helpers::FieldAttributes {
-        expose_as,
-        raw,
-    }
+    crate::field_ffi::FieldAttributes { expose_as, raw }
 }
 
 /// Dig the paths out of an attribute argument and collect them into a `Vec<String>`.
@@ -425,7 +425,7 @@ mod tests {
         .first()
         .expect("Failed to parse field")
         .to_owned();
-        assert!(parse_fn_attributes(&field.attrs).raw);
+        assert!(parse_field_attributes(&field.attrs).raw);
     }
 
     #[test]
@@ -451,7 +451,7 @@ mod tests {
         .first()
         .expect("Failed to parse field")
         .to_owned();
-        assert!(!parse_fn_attributes(&field.attrs).raw);
+        assert!(!parse_field_attributes(&field.attrs).raw);
     }
 
     #[test]

@@ -14,14 +14,12 @@
 extension FFIArrayString: FFIArray {
     typealias Value = UnsafePointer<CChar>?
 
-    static var defaultValue: UnsafePointer<CChar>? = nil
-
     static func from(ptr: UnsafePointer<Value>?, len: Int) -> FFIArrayString {
         ffi_array_string_init(ptr, len)
     }
 
     static func free(_ array: FFIArrayString) {
-        free_ffi_array_string(array)
+        ffi_array_string_free(array)
     }
 }
 
@@ -50,7 +48,7 @@ extension Array where Element == String {
         for i in 0..<count {
             nativeArray[i] = String(cString: foreignObject.ptr[i]!)
         }
-        free_ffi_array_string(foreignObject)
+        ffi_array_string_free(foreignObject)
         return nativeArray
     }
 }
@@ -77,7 +75,7 @@ extension Optional where Wrapped == [String] {
     }
 
     static func free(_ array: FFIArrayString) {
-        free_ffi_array_string(array)
+        ffi_array_string_free(array)
     }
 
     static func fromRust(_ foreignObject: FFIArrayString) -> Self {

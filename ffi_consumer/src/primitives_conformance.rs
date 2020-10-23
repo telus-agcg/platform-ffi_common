@@ -17,29 +17,21 @@ use heck::{CamelCase, SnakeCase};
 /// the FFI consumer.
 /// - `consumer_type`: This is the way the consumer's language represents `native_type`. For a Rust
 /// `u8`, Swift will use `UInt8`, etc.
-/// - `default_value`: The default value to use for this type (primarily when constructing an
-/// `Option::None` for FFI as `OptionT { false, T::default() }`).
 ///
-pub(super) fn generate(
-    native_type: &str,
-    ffi_type: &str,
-    consumer_type: &str,
-    default_value: &str,
-) -> String {
+pub(super) fn generate(native_type: &str, ffi_type: &str, consumer_type: &str) -> String {
     let mut output = array_conformance(
         &format!("FFIArray{}", native_type.to_camel_case()),
         ffi_type,
-        default_value,
         &format!("ffi_array_{}_init", native_type.to_snake_case()),
-        &format!("free_ffi_array_{}", native_type.to_snake_case()),
+        &format!("ffi_array_{}_free", native_type.to_snake_case()),
     );
     output.push_str(&option_conformance(
         consumer_type,
         ffi_type,
         &format!("option_{}_init", native_type.to_snake_case()),
-        &format!("free_option_{}", native_type.to_snake_case()),
+        &format!("option_{}_free", native_type.to_snake_case()),
     ));
-    output.push_str(&consumer_type_base(consumer_type, ffi_type, default_value));
+    output.push_str(&consumer_type_base(consumer_type, ffi_type));
     output.push_str(&consumer_array_type(
         consumer_type,
         &format!("FFIArray{}", native_type.to_camel_case()),
@@ -49,41 +41,28 @@ pub(super) fn generate(
 
 /// Conversion from the consumer's native array type to the `FFIArray` type for `native_type`.
 ///
-fn array_conformance(
-    array_name: &str,
-    ffi_type: &str,
-    default_value: &str,
-    init: &str,
-    free: &str,
-) -> String {
+fn array_conformance(array_name: &str, ffi_type: &str, init: &str, free: &str) -> String {
     format!(
         r#"
 extension {}: FFIArray {{
     typealias Value = {}
 
-    static var defaultValue: Value {{ {} }}
-
     static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
-{:<8}(ptr, len)
+        {}(ptr, len)
     }}
 
     static func free(_ array: Self) {{
-{:<8}(array)
+        {}(array)
     }}
 }}
 "#,
-        array_name, ffi_type, default_value, init, free
+        array_name, ffi_type, init, free
     )
 }
 
 /// Conversion from the consumer's native optional type to the Option type for `native_type`.
 ///
-fn option_conformance(
-    consumer_type: &str,
-    ffi_type: &str,
-    init: &str,
-    free: &str,
-) -> String {
+fn option_conformance(consumer_type: &str, ffi_type: &str, init: &str, free: &str) -> String {
     format!(
         r#"
 extension Optional where Wrapped == {} {{
@@ -110,7 +89,6 @@ extension Optional where Wrapped == {} {{
         {}(option)
     }}
 }}
-
 "#,
         consumer_type, ffi_type, init, ffi_type, ffi_type, free
     )
@@ -118,13 +96,11 @@ extension Optional where Wrapped == {} {{
 
 /// Linking between the Rust and consumer base types.
 ///
-fn consumer_type_base(consumer_type: &str, ffi_type: &str, default_value: &str) -> String {
+fn consumer_type_base(consumer_type: &str, ffi_type: &str) -> String {
     format!(
         r#"
 extension {}: NativeData {{
     typealias ForeignType = {}
-
-    static var defaultValue: Self {{ {} }}
 
     func toRust() -> ForeignType {{
         return self
@@ -135,7 +111,7 @@ extension {}: NativeData {{
     }}
 }}
 "#,
-        consumer_type, ffi_type, default_value
+        consumer_type, ffi_type
     )
 }
 

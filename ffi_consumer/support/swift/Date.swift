@@ -1,14 +1,12 @@
 extension FFIArrayTimeStamp: FFIArray {
     typealias Value = OpaquePointer?
 
-    static var defaultValue: Value { nil }
-
     static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {
         ffi_array_time_stamp_init(ptr, len)
     }
 
     static func free(_ array: Self) {
-        free_ffi_array_time_stamp(array)
+        ffi_array_time_stamp_free(array)
     }
 }
 
@@ -32,8 +30,6 @@ extension Optional where Wrapped == Date {
 
 extension Date: NativeData {
     typealias ForeignType = OpaquePointer
-
-    static var defaultValue: Self { Self() }
 
     private static let nsecs_per_sec: Double = 1_000_000_000
 

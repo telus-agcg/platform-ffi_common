@@ -1,27 +1,33 @@
 //!
-//! Common stuff used for generating the Rust FFI and the FFI consumer.
+//! Contains structures describing the fields of a struct, and implementations for building the
+//! related FFI and consumer implementations.
 //!
 
-use heck::{CamelCase, SnakeCase};
+use crate::{
+    native_type_data::{Context, NativeType, NativeTypeData},
+    parsing,
+};
+use heck::SnakeCase;
 use proc_macro2::TokenStream;
-use syn::Ident;
-use quote::{quote, format_ident};
+use quote::{format_ident, quote};
+use std::collections::HashMap;
+use syn::{Field, Ident, Path};
 
 /// Field-level FFI helper attributes.
 ///
 #[derive(Debug, Clone)]
 pub struct FieldAttributes {
-    /// If `Some`, the `Ident` of the type that this field should be exposed as. This type must meet
+    /// If `Some`, a path to the type that this field should be exposed as. This type must meet
     /// some prerequisites:
     /// 1. It must be FFI-safe (either because it's a primitive value or derives its own FFI with
     /// `ffi_derive`).
     /// 1. It must have a `From<T> for U` impl, where `T` is the native type of the field and `U` is
-    /// the type referenced by the `expose_as` `Ident`.
-    /// 
+    /// the type referenced by the `expose_as` `Path`.
+    ///
     /// This is necessary for exposing remote types where we want to derive an FFI, but don't
     /// control the declaration of the type.
-    /// 
-    pub expose_as: Option<Ident>,
+    ///
+    pub expose_as: Option<Path>,
 
     /// Whether the field's data should be exposed as a raw value (i.e., not `Box`ed). This should
     /// only be applied to fields whose type is `repr(C)` and safe to expose over FFI.
@@ -29,84 +35,21 @@ pub struct FieldAttributes {
     pub raw: bool,
 }
 
-/// The type of a field on a struct (from the perspective of generating an FFI).
-///
-#[derive(Debug, Clone)]
-pub enum FieldType {
-    /// A type that should be exposed behind on opaque pointer; we'll make this available as a
-    /// `*const T`, and consumers of that interface will be able to initialize, free, and access
-    /// properties on the type from getter functions.
+impl FieldAttributes {
+    /// If there's an `expose_as` attribute, get the ident of the last segment in the path (i.e.,
+    /// the ident of the type being referenced).
     ///
-    Boxed(Ident),
-    /// A timestamp that's safe to expose across the FFI (see `ffi_common::datetime`).
-    ///
-    DateTime,
-    /// A type that should be exposed as a raw value (like an i32, or a repr(C) enum).
-    ///
-    Raw(Ident),
-    /// A String.
-    ///
-    String,
-    /// A Uuid.
-    ///
-    Uuid,
-}
-
-/// The context in which a type is being referenced. Sometimes the mutability of a reference, or
-/// even the type it's exposed as is different depending on whether it's being returned to the
-/// consumer or passed in as an argument to a Rust function.
-///
-enum Context {
-    /// Type is being used as an argument to a Rust function.
-    Argument,
-    /// Type is being returned to the consumer.
-    Return,
-}
-
-static STRING: &str = "String";
-static DATETIME: &str = "NaiveDateTime";
-static UUID: &str = "Uuid";
-static BOOL: &str = "bool";
-static U8: &str = "u8";
-static U16: &str = "u16";
-static U32: &str = "u32";
-static U64: &str = "u64";
-static I8: &str = "i8";
-static I16: &str = "i16";
-static I32: &str = "i32";
-static I64: &str = "i64";
-static F32: &str = "f32";
-static F64: &str = "f64";
-
-impl From<Ident> for FieldType {
-    fn from(type_path: Ident) -> Self {
-        match type_path {
-            t if t == DATETIME => Self::DateTime,
-            t if t == STRING => Self::String,
-            t if t == UUID => Self::Uuid,
-            t if t == BOOL
-                || t == U8
-                || t == U16
-                || t == U32
-                || t == U64
-                || t == I8
-                || t == I16
-                || t == I32
-                || t == I64
-                || t == F32
-                || t == F64 =>
-            {
-                Self::Raw(t)
-            }
-            t => Self::Boxed(t),
-        }
+    pub fn expose_as_ident(&self) -> Option<&Ident> {
+        self.expose_as
+            .as_ref()
+            .map(|p| p.segments.last().map(|s| &s.ident))
+            .flatten()
     }
 }
 
 /// Represents the components of the generated FFI for a field.
 #[derive(Debug)]
 pub struct FieldFFI {
-
     /// The type to which this field belongs.
     ///
     pub type_name: Ident,
@@ -115,21 +58,13 @@ pub struct FieldFFI {
     ///
     pub field_name: Ident,
 
-    /// The native Rust type of the field.
+    /// The type information for generating an FFI for this field.
     ///
-    pub field_type: FieldType,
+    pub native_type_data: NativeTypeData,
 
     /// The FFI helper attribute annotations on this field.
     ///
     pub attributes: FieldAttributes,
-
-    /// True if this field is an `Option`, otherwise false.
-    ///
-    pub option: bool,
-
-    /// True if this field is a `Vec`, otherwise false.
-    ///
-    pub vec: bool,
 }
 
 impl FieldFFI {
@@ -138,7 +73,7 @@ impl FieldFFI {
     ///
     #[must_use]
     pub fn getter_name(&self) -> Ident {
-        if self.option {
+        if self.native_type_data.option {
             format_ident!(
                 "get_optional_{}_{}",
                 self.type_name.to_string().to_snake_case(),
@@ -153,90 +88,28 @@ impl FieldFFI {
         }
     }
 
-    /// Returns the name of the type used for communicating this field's data across the FFI
-    /// boundary.
-    /// 
-    /// When `mutable` is `true`, if `self` is exposed as a non-string reference type (such as a
-    /// `Box`ed struct or `Box`ed optional primitive), this will produce a token stream like
-    /// `*mut T`. This is mostly for the sake of the generated initializer, which takes mutable
-    /// pointers to indicate that the pointer will be consumed.
-    /// 
-    /// When `mutable` is `false`, if `self is exposed as a reference type, this will produce a
-    /// token stream like `*const T`.
-    ///
-    #[must_use]
-    fn ffi_type(&self, context: &Context) -> TokenStream {
-        let ptr_type = match context {
-            Context::Argument => quote!(*mut),
-            Context::Return => quote!(*const),
-        };
-        match &self.field_type {
-            FieldType::Boxed(inner) => {
-                // Replace the inner type for FFI with whatever the `expose_as` told us to use.
-                let inner = self.attributes.expose_as.as_ref().unwrap_or(inner);
-                if self.vec {
-                    let ident = format_ident!("FFIArray{}", inner);
-                    quote!(#ident)
-                } else {
-                    quote!(#ptr_type #inner)
-                }
-            }
-            FieldType::DateTime => {
-                if self.vec {
-                    quote!(FFIArrayTimeStamp)
-                } else {
-                    quote!(#ptr_type TimeStamp)
-                }
-            }
-            FieldType::Raw(inner) => {
-                // Replace the inner type for FFI with whatever the `expose_as` told us to use.
-                let inner = self.attributes.expose_as.as_ref().unwrap_or(inner);
-                if self.vec {
-                    let ident = format_ident!("FFIArray{}", inner.to_string().to_camel_case());
-                    quote!(#ident)
-                } else if self.option {
-                    // Option types are behind a pointer, because embedding structs in parameter
-                    // lists caused issues for Swift.
-                    quote!(#ptr_type #inner)
-                } else {
-                    quote!(#inner)
-                }
-            }
-            FieldType::String | FieldType::Uuid => {
-                if self.vec {
-                    quote!(FFIArrayString)
-                } else {
-                    // Strings are always `*const`, unlike other reference types, because they're
-                    // managed by the caller (since there's already language support for
-                    // initializing a `String` from a view of foreign data, we don't need the
-                    // preliminary step of allocating the data in Rust, which means we don't need to
-                    // reclaim that memory here).
-                    quote!(*const std::os::raw::c_char)
-                }
-            }
-        }
-    }
-
     /// An extern "C" function for returning the value of this field through the FFI. This takes a
     /// pointer to the struct and returns the field's value as an FFI-safe type, as in
     /// `pub extern "C" fn get_some_type_field(ptr: *const SomeType) -> FFIType`.
     ///
     #[must_use]
-    pub fn getter_body(&self) -> TokenStream {
+    pub fn getter_fn(&self) -> TokenStream {
         let field_name = &self.field_name;
         let type_name = &self.type_name;
         let getter_name = &self.getter_name();
-        let ffi_type = &self.ffi_type(&Context::Return);
-        let conversion: TokenStream = if self.vec {
-            if self.option {
-                quote!(data.#field_name.as_deref().into()) 
+        let ffi_type = &self
+            .native_type_data
+            .ffi_type(self.attributes.expose_as_ident(), &Context::Return);
+        let conversion: TokenStream = if self.native_type_data.vec {
+            if self.native_type_data.option {
+                quote!(data.#field_name.as_deref().into())
             } else {
-                quote!((&*data.#field_name).into()) 
+                quote!((&*data.#field_name).into())
             }
         } else {
-            match &self.field_type {
-                FieldType::Boxed(_) => {
-                    if self.option {
+            match &self.native_type_data.native_type {
+                NativeType::Boxed(_) => {
+                    if self.native_type_data.option {
                         let mut return_value = quote!(f.clone());
                         // If this field is exposed as a different type for FFI, convert it back to
                         // the native type.
@@ -258,8 +131,8 @@ impl FieldFFI {
                         quote!(Box::into_raw(Box::new(#return_value)))
                     }
                 }
-                FieldType::DateTime => {
-                    if self.option {
+                NativeType::DateTime => {
+                    if self.native_type_data.option {
                         quote!(
                             data.#field_name.as_ref().map_or(ptr::null(), |f| {
                                 Box::into_raw(Box::new(f.into()))
@@ -269,9 +142,10 @@ impl FieldFFI {
                         quote!(Box::into_raw(Box::new((&data.#field_name).into())))
                     }
                 }
-                FieldType::Raw(inner) => {
-                    if self.option {
-                        let boxer = format_ident!("option_{}_init", inner.to_string().to_snake_case());
+                NativeType::Raw(inner) => {
+                    if self.native_type_data.option {
+                        let boxer =
+                            format_ident!("option_{}_init", inner.to_string().to_snake_case());
                         quote!(
                             match data.#field_name {
                                 Some(data) => #boxer(true, data),
@@ -282,8 +156,8 @@ impl FieldFFI {
                         quote!(data.#field_name.clone().into())
                     }
                 }
-                FieldType::String | FieldType::Uuid=> {
-                    if self.option {
+                NativeType::String | NativeType::Uuid => {
+                    if self.native_type_data.option {
                         quote!(
                             data.#field_name.as_ref().map_or(ptr::null(), |s| {
                                 ffi_common::ffi_string!(s.to_string())
@@ -316,7 +190,9 @@ impl FieldFFI {
     #[must_use]
     pub fn ffi_initializer_argument(&self) -> TokenStream {
         let field_name = &self.field_name;
-        let ffi_type = &self.ffi_type(&Context::Argument);
+        let ffi_type = &self
+            .native_type_data
+            .ffi_type(self.attributes.expose_as_ident(), &Context::Argument);
         quote!(#field_name: #ffi_type,)
     }
 
@@ -328,32 +204,32 @@ impl FieldFFI {
 
         // All FFIArrayT types have a `From<FFIArrayT> for Vec<T>` impl, so we can treat them all
         // the same for the sake of native Rust assignment.
-        if self.vec {
+        if self.native_type_data.vec {
             return quote!(#field_name: #field_name.into(),);
         }
 
-        match self.field_type {
-            FieldType::Boxed(_) => {
+        match self.native_type_data.native_type {
+            NativeType::Boxed(_) => {
                 if self.attributes.expose_as.is_some() {
                     // The expose_as type will take care of its own optionality and cloning; all
                     // we need to do is make sure the pointer is safe (if this field is optional),
                     // then let it convert with `into()`.
-                    if self.option {
+                    if self.native_type_data.option {
                         quote! {
                             #field_name: unsafe {
                                 if #field_name.is_null() {
                                     None
                                 } else {
-                                    (*#field_name).into()
+                                    (*Box::from_raw(#field_name)).into()
                                 }
                             },
                         }
                     } else {
                         quote! {
-                            #field_name: unsafe { (*#field_name).into() },
+                            #field_name: unsafe { (*Box::from_raw(#field_name)).into() },
                         }
                     }
-                } else if self.option {
+                } else if self.native_type_data.option {
                     quote! {
                         #field_name: unsafe {
                             if #field_name.is_null() {
@@ -367,8 +243,8 @@ impl FieldFFI {
                     quote!(#field_name: unsafe { *Box::from_raw(#field_name) },)
                 }
             }
-            FieldType::DateTime => {
-                if self.option {
+            NativeType::DateTime => {
+                if self.native_type_data.option {
                     quote! {
                         #field_name: unsafe {
                             if #field_name.is_null() {
@@ -382,8 +258,8 @@ impl FieldFFI {
                     quote!(#field_name: unsafe { (&*Box::from_raw(#field_name)).into() },)
                 }
             }
-            FieldType::Raw(_) => {
-                if self.option {
+            NativeType::Raw(_) => {
+                if self.native_type_data.option {
                     quote! {
                         #field_name: unsafe {
                             if #field_name.is_null() {
@@ -395,10 +271,10 @@ impl FieldFFI {
                     }
                 } else {
                     quote!(#field_name: #field_name,)
-                } 
+                }
             }
-            FieldType::String => {
-                if self.option {
+            NativeType::String => {
+                if self.native_type_data.option {
                     quote! {
                         #field_name: if #field_name.is_null() {
                             None
@@ -410,8 +286,8 @@ impl FieldFFI {
                     quote!(#field_name: ffi_common::string::string_from_c(#field_name),)
                 }
             }
-            FieldType::Uuid => {
-                if self.option {
+            NativeType::Uuid => {
+                if self.native_type_data.option {
                     quote! {
                         #field_name: if #field_name.is_null() {
                             None
@@ -425,59 +301,58 @@ impl FieldFFI {
             }
         }
     }
+}
 
-    /// Returns the name of this type in the consumer's language.
-    ///
-    #[must_use]
-    pub fn consumer_type(&self) -> String {
-        let mut t = match &self.field_type {
-            FieldType::Boxed(inner) => inner.to_string(),
-            FieldType::Raw(inner) => consumer_type_for(&inner.to_string(), false),
-            FieldType::DateTime => "Date".to_string(),
-            FieldType::String | FieldType::Uuid => "String".to_string(),
+impl From<(Ident, &Field, &HashMap<Ident, Ident>)> for FieldFFI {
+    fn from(inputs: (Ident, &Field, &HashMap<Ident, Ident>)) -> Self {
+        let (type_name, field, alias_map) = inputs;
+        let field_name = field
+            .ident
+            .as_ref()
+            .unwrap_or_else(|| {
+                panic!(format!(
+                    "Expected field: {:?} to have an identifier.",
+                    &field
+                ))
+            })
+            .clone();
+        let attributes = parsing::parse_field_attributes(&field.attrs);
+        let (wrapping_type, unaliased_field_type) = match parsing::get_segment_for_field(&field.ty)
+        {
+            Some(segment) => {
+                let (ident, wrapping_type) =
+                    parsing::separate_wrapping_type_from_inner_type(segment);
+                (wrapping_type, resolve_type_alias(&ident, alias_map))
+            }
+            None => panic!("No path segment (field without a type?)"),
         };
 
-        if self.vec { t = format!("[{}]", t) }
+        // If this has a raw attribute, bypass the normal `NativeType` logic and use `NativeType::raw`.
+        let field_type = if attributes.raw {
+            NativeType::Raw(unaliased_field_type)
+        } else {
+            NativeType::from(unaliased_field_type)
+        };
 
-        if self.option { t = format!("{}?", t) }
+        let native_type_data = NativeTypeData::from((field_type, wrapping_type));
 
-        t
+        FieldFFI {
+            type_name,
+            field_name,
+            native_type_data,
+            attributes,
+        }
     }
 }
 
-/// Creates a consumer directory at `out_dir` and returns its path.
+/// If `field_type` is an alias in `alias_map`, returns the underlying type (resolving aliases
+/// recursively, so if someone is weird and defines typealiases over other typealiases, we'll still
+/// find the underlying type, as long as they were all specified in the `alias_paths` helper
+/// attribute).
 ///
-/// # Errors
-///
-/// Returns a `std::io::Error` if anything prevents us from creating `dir`.
-///
-pub fn create_consumer_dir(dir: &str) -> Result<&str, std::io::Error> {
-    std::fs::create_dir_all(dir)?;
-    Ok(dir)
-}
-
-/// Given a native type, this will return the type the consumer will use. If `native_type` is a
-/// primitive, we'll match it with the corresponding primitive on the consumer's side. Otherwise,
-/// we'll just return the type.
-///
-#[must_use]
-pub fn consumer_type_for(native_type: &str, option: bool) -> String {
-    let mut converted = match native_type {
-        "u8" => "UInt8".to_string(),
-        "u16" => "UInt16".to_string(),
-        "u32" => "UInt32".to_string(),
-        "u64" => "UInt64".to_string(),
-        "i8" => "Int8".to_string(),
-        "i16" => "Int16".to_string(),
-        "i32" => "Int32".to_string(),
-        "i64" => "Int64".to_string(),
-        "f32" => "Float32".to_string(),
-        "f64" => "Double".to_string(),
-        "bool" => "Bool".to_string(),
-        _ => native_type.to_string(),
-    };
-    if option {
-        converted.push('?');
+fn resolve_type_alias(field_type: &Ident, alias_map: &HashMap<Ident, Ident>) -> Ident {
+    match alias_map.get(field_type) {
+        Some(alias) => resolve_type_alias(alias, alias_map),
+        None => field_type.clone(),
     }
-    converted
 }

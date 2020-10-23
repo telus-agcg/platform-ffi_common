@@ -118,8 +118,8 @@ mod tests {
 
     #[test]
     fn naive_date_time_to_time_stamp() {
-        let secs: i64 = 1599868112;
-        let nsecs: u32 = 1599868;
+        let secs: i64 = 1_599_868_112;
+        let nsecs: u32 = 1_599_868;
         let datetime = NaiveDateTime::from_timestamp(secs, nsecs);
         let timestamp = TimeStamp::from(&datetime);
         assert_eq!(timestamp.secs, secs);

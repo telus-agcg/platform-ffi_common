@@ -209,14 +209,14 @@ impl From<FFIArrayString> for Option<Vec<Uuid>> {
 /// bizarre (like initializing an `FFIArrayString` on the other side of the FFI boundary), this will
 /// have undefined behavior. Don't do that.
 ///
-/// You **must not** access `array` after passing it to `free_ffi_array_string`.
+/// You **must not** access `array` after passing it to `ffi_array_string_free`.
 ///
 /// It is safe to call this method with an `array` whose `ptr` is null; we won't double-free or free
 /// unallocated memory if, for example, you pass an array that represents the `None` variant of an
 /// `Option<Vec<T>>`.
 ///
 #[no_mangle]
-pub extern "C" fn free_ffi_array_string(array: FFIArrayString) {
+pub extern "C" fn ffi_array_string_free(array: FFIArrayString) {
     if array.ptr.is_null() {
         return;
     }

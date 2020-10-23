@@ -11,6 +11,7 @@ proc-macro = true
 [dependencies]
 ffi_common = { path = "../ffi_common" }
 ffi_consumer = { path = "../ffi_consumer" }
+ffi_internals = { path = "../ffi_internals" }
 heck = "0.3"
 paste = "1.0"
 proc-macro2 = "1.0"

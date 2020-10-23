@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "ffi_common",
-    "ffi_derive",
     "ffi_consumer",
+    "ffi_derive",
+    "ffi_internals"
 ]
