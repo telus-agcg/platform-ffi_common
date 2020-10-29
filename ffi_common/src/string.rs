@@ -209,14 +209,14 @@ impl From<FFIArrayString> for Option<Vec<Uuid>> {
 /// bizarre (like initializing an `FFIArrayString` on the other side of the FFI boundary), this will
 /// have undefined behavior. Don't do that.
 ///
-/// You **must not** access `array` after passing it to `free_ffi_array_string`.
+/// You **must not** access `array` after passing it to `ffi_array_string_free`.
 ///
 /// It is safe to call this method with an `array` whose `ptr` is null; we won't double-free or free
 /// unallocated memory if, for example, you pass an array that represents the `None` variant of an
 /// `Option<Vec<T>>`.
 ///
 #[no_mangle]
-pub extern "C" fn free_ffi_array_string(array: FFIArrayString) {
+pub extern "C" fn ffi_array_string_free(array: FFIArrayString) {
     if array.ptr.is_null() {
         return;
     }
@@ -285,13 +285,16 @@ mod tests {
 
     #[test]
     fn can_free_string() {
-        crate::error::set_last_err_msg("testy test test");
-        let error = crate::error::get_last_err_msg();
-        let error_bytes = unsafe { CStr::from_ptr(error).to_bytes() };
-        assert!(!error_bytes.is_empty());
-        free_rust_string(error);
-        let error_bytes_after_free = unsafe { CStr::from_ptr(error).to_bytes() };
-        assert!(error_bytes_after_free.is_empty());
+        unsafe {
+            crate::error::set_last_err_msg("testy test test");
+            let error = crate::error::get_last_err_msg();
+            let error_bytes = CStr::from_ptr(error).to_bytes();
+            assert!(!error_bytes.is_empty());
+            let original_pointee =  *error;
+            assert_eq!(*error, original_pointee);
+            free_rust_string(error);
+            assert_ne!(*error, original_pointee);
+        }
     }
 
     #[test]

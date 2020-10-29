@@ -60,12 +60,14 @@
 mod error;
 mod primitives_conformance;
 
+pub mod consumer_enum;
 pub mod consumer_struct;
 pub use error::Error;
 
 /// Call this to write protocols and primitive conformance to those protocols to `consumer_dir`.
 ///
-/// Note: `consumer_dir` must exist.
+/// Note: If `consumer_dir` does not exist, it will be created (along with any missing parent
+/// directories).
 ///
 /// # Errors
 ///
@@ -73,6 +75,7 @@ pub use error::Error;
 /// conformance files.
 ///
 pub fn write_consumer_foundation(consumer_dir: &str, language: &str) -> Result<(), Error> {
+    let consumer_dir = ffi_internals::create_consumer_dir(consumer_dir)?;
     write_support_files(consumer_dir, language)?;
     write_primitive_conformances(consumer_dir)?;
     Ok(())
@@ -109,18 +112,16 @@ fn write_primitive_conformances(consumer_dir: &str) -> Result<(), std::io::Error
     ]
     .iter()
     .map(|native_type| {
-        let consumer_type = ffi_common::codegen_helpers::consumer_type_for(native_type, false);
+        let consumer_type = ffi_internals::consumer_type_for(native_type, false);
         // Note: This is only accurate for Swift primitives, whose FFI and consumer types happen to
         // match. Don't assume consumer_type == ffi_type for non-primitive types, or for primitives
         // in other languages.
         let ffi_type = &consumer_type;
-        let default_value = if native_type == &"bool" { "false" } else { "0" };
         let mut conformance_file = header();
         conformance_file.push_str(&primitives_conformance::generate(
             native_type,
             ffi_type,
             &consumer_type,
-            default_value,
         ));
         std::fs::write(
             format!("{}/{}.swift", consumer_dir, consumer_type),

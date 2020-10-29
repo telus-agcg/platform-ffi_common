@@ -52,6 +52,7 @@
 //! 1. Custom `repr(C)` types.
 //! 1. Custom non-`repr(C)` types.
 //! 1. Typealiases over any of the above.
+//! 1. Remote types with custom FFI implementations (see `Remote types` section).
 //! 1. A few specific generics:
 //!   1. `Option<T>` where `T` is any supported type (but not nested `Option<Option<T>>`).
 //!   1. `Vec<T>` where `T` is any supported type (but not nested `Vec<Vec<T>>`).
@@ -105,6 +106,32 @@
 //! }
 //! ```
 //!
+//! ## Custom implementations
+//!
+//! Some types (like `wise_units::Unit`) don't fit the pattern of deriving an FFI for their visible
+//! fields; their internal structure isn't FFI-safe, or isn't a useful interface (for example, we
+//! care about a `wise_units::Unit` as a thing that can be initialized from a UCUM expression, and
+//! we need to be able to read a UCUM expression out of it, but we don't care about its `terms`
+//! field, or the fields of the `Term` type, etc).
+//!
+//! In those cases, we want to let a type be `ffi_derive`d so it can take advantage of all the
+//! boilerplate stuff + get a consumer generated for itself, but provide its own implementation of
+//! an initializer and getter functions. The `custom` helper attribute lets us point to to a file
+//! that describes the base interface for the type, as in `ffi(custom = "src/unit/custom_ffi.rs")`.
+//!
+//! See `../tests/custom_ffi` for an example.
+//!
+//! ## Remote types
+//!
+//! Sometimes we'll want to expose a field whose type is defined in a crate we don't control (like
+//! boundaries in `agrian_types`, which are usually `geo_types::MultiPolygon<T>`). Since we can't
+//! derive an FFI for remote types, we need to be able to point at another type that the remote type
+//! can be converted into. This wrapping type (which can either have a derived or a custom FFI
+//! implementation) can be specified with the `expose_as` helper attribute, as in
+//! `ffi(expose_as = "crate::multi_polygon_ffi::MultiPolygonWrapper")`.
+//!
+//! See `../tests/remote_types` for an example.
+//!
 
 #![warn(
     future_incompatible,
@@ -127,10 +154,9 @@
 #![forbid(missing_docs, unused_extern_crates, unused_imports)]
 
 mod enum_ffi;
-mod field_ffi;
-mod parsing;
 mod struct_ffi;
 
+use ffi_internals::parsing;
 use heck::SnakeCase;
 use proc_macro::TokenStream;
 use quote::format_ident;
@@ -142,40 +168,45 @@ pub fn ffi_derive(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = syn::parse(input).unwrap();
 
     // Build the trait implementation
-    impl_ffi_macro(&ast)
+    impl_ffi_macro(ast)
 }
 
-fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
-    let type_name = &ast.ident;
+fn impl_ffi_macro(ast: DeriveInput) -> TokenStream {
+    // Get the relative file paths from the attribute args, prefix them with the cargo
+    // manifest dir, then build a hash map for resolving type aliases.
+    let crate_root = std::env::var("CARGO_MANIFEST_DIR").expect(
+        "Could not find `CARGO_MANIFEST_DIR` to look up aliases in `ffi_derive::impl_ffi_macro`.",
+    );
+    let out_dir = option_env!("FFI_CONSUMER_ROOT_DIR").unwrap_or_else(|| env!("OUT_DIR"));
+
+    let type_name = ast.ident.clone();
     let module_name = format_ident!("{}_ffi", &type_name.to_string().to_snake_case());
-    match &ast.data {
+    match ast.data {
         Data::Struct(data) => {
-            // Get the relative file paths from the attribute args, prefix them with the cargo
-            // manifest dir, then build a hash map for resolving type aliases.
-            let crate_root = std::env::var("CARGO_MANIFEST_DIR").expect(
-                "Could not find `CARGO_MANIFEST_DIR` to look up aliases in `ffi_derive::impl_ffi_macro`.",
-            );
-
             let struct_attributes = parsing::parse_struct_attributes(&ast.attrs);
-
-            let paths: Vec<String> = struct_attributes.alias_paths
+            let paths: Vec<String> = struct_attributes
+                .alias_paths
                 .iter()
                 .map(|path| format!("{}/{}", crate_root, path))
                 .collect();
             let alias_map = parsing::type_alias_map(&paths);
 
-            match struct_attributes.custom_path {
-                Some(custom_module_path) => {
-                    struct_ffi::build_custom(&module_name, &format!("{}/{}", crate_root, custom_module_path), type_name)
-                }
-                None => struct_ffi::build(&module_name, type_name, &data.fields, &alias_map)
+            if let Some(custom_module_path) = struct_attributes.custom_path {
+                struct_ffi::custom(
+                    &type_name,
+                    &module_name,
+                    &format!("{}/{}", crate_root, custom_module_path),
+                    out_dir,
+                )
+            } else {
+                struct_ffi::standard(module_name, &type_name, data, alias_map, out_dir)
             }
         }
         Data::Enum(_) => {
             if !parsing::is_repr_c(&ast.attrs) {
                 panic!("Non-repr(C) enums are not supported.")
             }
-            enum_ffi::build(&module_name, type_name)
+            enum_ffi::build(&module_name, &type_name, out_dir)
         }
         Data::Union(_) => panic!("Unions are not supported"),
     }
