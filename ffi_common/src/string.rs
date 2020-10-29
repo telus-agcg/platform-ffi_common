@@ -285,13 +285,16 @@ mod tests {
 
     #[test]
     fn can_free_string() {
-        crate::error::set_last_err_msg("testy test test");
-        let error = crate::error::get_last_err_msg();
-        let error_bytes = unsafe { CStr::from_ptr(error).to_bytes() };
-        assert!(!error_bytes.is_empty());
-        free_rust_string(error);
-        let error_bytes_after_free = unsafe { CStr::from_ptr(error).to_bytes() };
-        assert!(error_bytes_after_free.is_empty());
+        unsafe {
+            crate::error::set_last_err_msg("testy test test");
+            let error = crate::error::get_last_err_msg();
+            let error_bytes = CStr::from_ptr(error).to_bytes();
+            assert!(!error_bytes.is_empty());
+            let original_pointee =  *error;
+            assert_eq!(*error, original_pointee);
+            free_rust_string(error);
+            assert_ne!(*error, original_pointee);
+        }
     }
 
     #[test]
