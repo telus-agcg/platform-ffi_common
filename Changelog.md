@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2020-12-15
 
 ### Added
 
@@ -34,6 +34,11 @@ the FFI produced by `ffi_derive`.
 - Move `ffi_common` into a workspace (to make room for `ffi_derive`).
 - Move the `try_or_set_error` macro into the `error` module with all of the other error handling.
 - Rename `ffi.rs` to `string.rs`, since it only contains string-related FFI behaviors now.
+
+### Fixed
+
+- (Internal) The `0.2.0` tag was cut but version numbers hadn't been bumped; the
+    `0.2.0.1` tag represents the actual release.
 
 ## [0.1.1] - 2020-08-10
 
