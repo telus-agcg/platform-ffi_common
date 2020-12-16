@@ -9,6 +9,6 @@ repository = "https://github.com/agrian-inc/ffi_common"
 
 [dependencies]
 ffi_common = { version = "0.2", registry = "agrian-registry" }
-ffi_internals = { path = "../ffi_internals" }
+ffi_internals = { version = "0.2", registry = "agrian-registry" }
 heck = "0.3"
 syn = { version = "1.0", features = ["full"] }
