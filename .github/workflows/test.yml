@@ -1,0 +1,69 @@
+name: Continuous Integration
+
+on:
+  push:
+  pull_request:
+    branches: [ develop ]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_REGISTRIES_AGRIAN_REGISTRY_INDEX: ${{ secrets.AGRIAN_CRATES_REGISTRY }}
+
+jobs:
+  test_linux:
+    name: Test (linux)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@ee29fafb6aa450493bac9136b346e51ea60a8b5e
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+            ${{ runner.os }}-cargo
+      - name: cargo test all
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --all-features
+
+  test_ios:
+    name: Test (x86_64-apple-ios)
+    runs-on: [self-hosted, macOS]
+    env:
+      DYLD_ROOT_PATH: '/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app'
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@ee29fafb6aa450493bac9136b346e51ea60a8b5e
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
+            ${{ runner.os }}-cargo
+      - uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          target: x86_64-apple-ios
+          override: true
+      - name: cargo test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --workspace --all-features --tests --target x86_64-apple-ios

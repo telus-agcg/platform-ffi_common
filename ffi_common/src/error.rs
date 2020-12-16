@@ -7,7 +7,7 @@
 //! that error as a "string" (`*const c_char`).
 //!
 
-use std::cell::RefCell;
+use std::{cell::RefCell, ffi::CString, os::raw::c_char};
 
 thread_local! {
     pub(crate) static LAST_ERROR: RefCell<Option<String>> = RefCell::new(None);
@@ -47,27 +47,44 @@ macro_rules! try_or_set_error {
             Ok(val) => val,
             Err(error) => {
                 $crate::error::set_last_err_msg(error.to_string().as_str());
-                return $return_expr;
+                $return_expr
             }
         }
     };
 
     ($expr:expr) => {
-        try_or_set_error!($expr, std::ptr::null())
+        $crate::try_or_set_error!($expr, std::ptr::null())
     };
+}
+
+/// Get the last error message stored by the library.
+///
+/// Note that as with all other references to string data originating in Rust, clients *must* call
+/// `free_rust_string` with this pointer once its data has been copied into client-owned memory.
+///
+#[must_use]
+#[no_mangle]
+pub extern "C" fn get_last_err_msg() -> *const c_char {
+    let mut msg: Option<String> = None;
+    LAST_ERROR.with(|last_error| {
+        msg = last_error.borrow().clone();
+    });
+    match msg {
+        Some(string) => try_or_set_error!(CString::new(string).map(CString::into_raw)),
+        None => std::ptr::null(),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ffi;
     use std::ffi::CStr;
 
     #[test]
     fn can_set_error() {
         let error = "dummy error";
         set_last_err_msg(error);
-        let result = ffi::get_last_err_msg();
+        let result = get_last_err_msg();
         let result_c: &CStr = unsafe { CStr::from_ptr(result) };
         let returned_error = result_c.to_str().expect("Failed to get str from CStr");
         assert_eq!(error, returned_error);
@@ -78,6 +95,6 @@ mod tests {
         let error = "dummy error";
         set_last_err_msg(error);
         clear_last_err_msg();
-        assert_eq!(std::ptr::null(), ffi::get_last_err_msg());
+        assert_eq!(std::ptr::null(), get_last_err_msg());
     }
 }
