@@ -2,7 +2,7 @@ use cbindgen::{Builder, Language};
 use std::env;
 
 fn main() {
-    let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let crate_dir = env::var("OUT_DIR").unwrap();
 
     Builder::new()
         .with_crate(crate_dir)
