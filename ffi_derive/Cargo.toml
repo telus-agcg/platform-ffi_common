@@ -1,9 +1,10 @@
 [package]
 name = "ffi_derive"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Nicholas Smillie <nicholas@agrian.com>"]
 repository = "https://github.com/agrian-inc/agrian_types"
 edition = "2018"
+repository = "https://github.com/agrian-inc/ffi_common"
 
 [lib]
 proc-macro = true
