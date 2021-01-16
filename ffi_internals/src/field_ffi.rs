@@ -4,13 +4,13 @@
 //!
 
 use crate::{
+    alias_resolution,
     native_type_data::{Context, NativeType, NativeTypeData},
     parsing,
 };
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use std::collections::HashMap;
 use syn::{Field, Ident, Path};
 
 /// Field-level FFI helper attributes.
@@ -303,9 +303,9 @@ impl FieldFFI {
     }
 }
 
-impl From<(Ident, &Field, &HashMap<Ident, Ident>)> for FieldFFI {
-    fn from(inputs: (Ident, &Field, &HashMap<Ident, Ident>)) -> Self {
-        let (type_name, field, alias_map) = inputs;
+impl From<(Ident, &Field, &[String])> for FieldFFI {
+    fn from(inputs: (Ident, &Field, &[String])) -> Self {
+        let (type_name, field, alias_modules) = inputs;
         let field_name = field
             .ident
             .as_ref()
@@ -322,7 +322,10 @@ impl From<(Ident, &Field, &HashMap<Ident, Ident>)> for FieldFFI {
             Some(segment) => {
                 let (ident, wrapping_type) =
                     parsing::separate_wrapping_type_from_inner_type(segment);
-                (wrapping_type, resolve_type_alias(&ident, alias_map))
+                (
+                    wrapping_type,
+                    alias_resolution::resolve_type_alias(&ident, alias_modules),
+                )
             }
             None => panic!("No path segment (field without a type?)"),
         };
@@ -342,17 +345,5 @@ impl From<(Ident, &Field, &HashMap<Ident, Ident>)> for FieldFFI {
             native_type_data,
             attributes,
         }
-    }
-}
-
-/// If `field_type` is an alias in `alias_map`, returns the underlying type (resolving aliases
-/// recursively, so if someone is weird and defines typealiases over other typealiases, we'll still
-/// find the underlying type, as long as they were all specified in the `alias_paths` helper
-/// attribute).
-///
-fn resolve_type_alias(field_type: &Ident, alias_map: &HashMap<Ident, Ident>) -> Ident {
-    match alias_map.get(field_type) {
-        Some(alias) => resolve_type_alias(alias, alias_map),
-        None => field_type.clone(),
     }
 }

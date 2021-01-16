@@ -33,6 +33,8 @@ fn check_uuid_vec_memory_after_free() {
 
         assert_eq!(*unsafe_ptr, original_pointee);
         let uuid_struct = uuid_struct_init(string_array);
+        // Flaky test. Nothing guarantees or requires that `unsafe_ptr`'s memory be immediately
+        // changed just because the pointer has been reclaimed and dropped by the Rust allocator.
         assert_ne!(*unsafe_ptr, original_pointee);
         uuid_struct_free(uuid_struct);
     }

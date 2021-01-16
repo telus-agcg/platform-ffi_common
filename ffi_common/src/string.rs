@@ -290,7 +290,7 @@ mod tests {
             let error = crate::error::get_last_err_msg();
             let error_bytes = CStr::from_ptr(error).to_bytes();
             assert!(!error_bytes.is_empty());
-            let original_pointee =  *error;
+            let original_pointee = *error;
             assert_eq!(*error, original_pointee);
             free_rust_string(error);
             assert_ne!(*error, original_pointee);

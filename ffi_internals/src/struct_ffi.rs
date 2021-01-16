@@ -7,10 +7,7 @@ use crate::field_ffi::FieldFFI;
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use std::{
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-};
+use std::{collections::HashSet, convert::TryFrom};
 use syn::{Fields, Ident};
 
 pub struct StructFFI {
@@ -56,7 +53,7 @@ pub struct StructInputs {
     pub module_name: Ident,
     pub type_name: Ident,
     pub data: syn::DataStruct,
-    pub alias_map: HashMap<Ident, Ident>,
+    pub alias_modules: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -78,7 +75,7 @@ impl TryFrom<&StructInputs> for StructFFI {
         }
         .named
         .iter()
-        .map(|field| FieldFFI::from((derive.type_name.clone(), field, &derive.alias_map)))
+        .map(|field| FieldFFI::from((derive.type_name.clone(), field, &*derive.alias_modules)))
         .collect();
 
         let (init_arguments, assignment_expressions, getter_fns) =

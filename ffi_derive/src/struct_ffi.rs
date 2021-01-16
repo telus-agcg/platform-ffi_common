@@ -10,7 +10,7 @@ use ffi_internals::{
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::format_ident;
-use std::{collections::HashMap, convert::TryFrom};
+use std::convert::TryFrom;
 use syn::Ident;
 
 pub(super) fn custom(
@@ -58,14 +58,14 @@ pub(super) fn standard(
     module_name: Ident,
     type_name: &Ident,
     data: syn::DataStruct,
-    alias_map: HashMap<Ident, Ident>,
+    alias_modules: Vec<String>,
     out_dir: &str,
 ) -> TokenStream {
     let struct_ffi = StructFFI::try_from(&StructInputs {
         module_name,
         type_name: type_name.clone(),
         data,
-        alias_map,
+        alias_modules,
     })
     .expect("Unsupported struct data");
 

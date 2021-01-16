@@ -6,6 +6,7 @@
 //! which has more general FFI stuff.
 //!
 
+pub mod alias_resolution;
 pub mod field_ffi;
 pub mod native_type_data;
 pub mod parsing;

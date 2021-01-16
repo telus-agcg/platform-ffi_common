@@ -2,7 +2,6 @@
 //! Parses the data that we're interested in out of `syn::DeriveInput` syntax tree.
 //!
 
-use std::collections::HashMap;
 use std::fs::File;
 use std::io::Read;
 use syn::{
@@ -45,38 +44,6 @@ pub fn is_repr_c(attrs: &[Attribute]) -> bool {
             }
         })
     })
-}
-
-/// Build a map of all the typealiases we know about and their underlying types. This is necessary
-/// because the ast doesn't have any information other than the typealias, so when we're iterating
-/// through a struct's fields, all we see is `GrowerId`, `CommodityId`, etc., when we really need to
-/// know that it's a `Uuid` or a `u16` so that we can generate the right FFI for it.
-///
-pub fn type_alias_map(paths: &[String]) -> HashMap<Ident, Ident> {
-    paths.iter().flat_map(|path| {
-        let mut file = File::open(path).expect("Unable to open file");
-        let mut src = String::new();
-        let _ = file.read_to_string(&mut src).expect("Unable to read file");
-
-        syn::parse_file(&src)
-            .expect("Unable to parse file")
-            .items
-            .iter()
-            .fold(HashMap::new(), |mut acc, item| {
-                if let Item::Type(item_type) = item {
-                    if acc.contains_key(&item_type.ident) {
-                        panic!("The alias {:?} is defined multiple times. Consider only listing one entry in the `ffi(alias_paths())` attribute, or renaming the duplicate alias.", item_type)
-                    }
-                    if let Type::Path(p) = &*item_type.ty {
-                        if let Some(segment) = p.path.segments.first() {
-                            let _ = acc.insert(item_type.ident.clone(), segment.ident.clone());
-                        }
-                    }
-                }
-                acc
-            })
-    })
-    .collect()
 }
 
 /// Figures out the names and types of all of the arguments in the custom FFI initializer and
@@ -183,12 +150,12 @@ fn parse_ffi_meta(attr: &Attribute) -> Result<Vec<NestedMeta>, ()> {
 }
 
 pub struct StructAttributes {
-    pub alias_paths: Vec<String>,
+    pub alias_modules: Vec<String>,
     pub custom_path: Option<String>,
 }
 
 pub fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
-    let mut alias_paths = vec![];
+    let mut alias_modules = vec![];
     let mut custom_path: Option<String> = None;
     for meta_item in attrs.iter().flat_map(parse_ffi_meta).flatten() {
         match &meta_item {
@@ -197,8 +164,8 @@ pub fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
                     custom_path = Some(lit.value());
                 }
             }
-            Meta(List(l)) if l.path.is_ident("alias_paths") => {
-                alias_paths.extend(l.nested.iter().flat_map(parse_alias_paths));
+            Meta(List(l)) if l.path.is_ident("alias_modules") => {
+                alias_modules.extend(l.nested.iter().flat_map(parse_alias_modules));
             }
             other => {
                 panic!("Unsupported ffi attribute type: {:?}", other);
@@ -206,7 +173,7 @@ pub fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
         }
     }
     StructAttributes {
-        alias_paths,
+        alias_modules,
         custom_path,
     }
 }
@@ -232,9 +199,9 @@ pub(super) fn parse_field_attributes(attrs: &[Attribute]) -> crate::field_ffi::F
     crate::field_ffi::FieldAttributes { expose_as, raw }
 }
 
-/// Dig the paths out of an attribute argument and collect them into a `Vec<String>`.
+/// Dig the paths out of a struct attribute argument and collect them into a `Vec<String>`.
 ///
-fn parse_alias_paths(arg: &NestedMeta) -> Vec<String> {
+fn parse_alias_modules(arg: &NestedMeta) -> Vec<String> {
     match arg {
         Meta(_) => {
             panic!("Unexpected meta attribute {:?}", arg);
@@ -244,7 +211,7 @@ fn parse_alias_paths(arg: &NestedMeta) -> Vec<String> {
                 lit_str
                     .value()
                     .split(',')
-                    .map(|s| s.trim_end().trim_start().to_string())
+                    .map(|s| s.trim().to_string())
                     .collect()
             } else {
                 panic!("Non-string literal attribute: {:?}", lit)
@@ -313,7 +280,6 @@ pub(super) fn separate_wrapping_type_from_inner_type(
 mod tests {
     use super::*;
     use quote::format_ident;
-    use std::{env, fs};
 
     #[test]
     fn test_is_repr_c() {
@@ -344,61 +310,6 @@ mod tests {
             _ => panic!("Unexpected item type"),
         };
         assert!(!is_repr_c(&*item.attrs));
-    }
-
-    #[test]
-    fn test_parse_alias_paths() {
-        // Seed an alias file.
-        let mut dir = env::temp_dir();
-        dir.push("aliases.rs");
-        let _ = fs::write(
-            &dir,
-            r#"
-        pub type AnotherNameForU8 = u8;
-        pub type AnotherNameForF32 = f32;
-        pub type AliasedAlias = AnotherNameForF32;
-        "#,
-        )
-        .ok();
-
-        let mut dir2 = env::temp_dir();
-        dir2.push("aliases2.rs");
-        let _ = fs::write(
-            &dir2,
-            r#"
-            pub type AliasedI128 = i128;
-            "#,
-        )
-        .ok();
-
-        // Parse the alias paths attribute from a struct
-        let item_string = format!(
-            r#"
-            #[ffi(alias_paths("{}, {}"))]
-            struct TestStruct {{ }}
-            "#,
-            dir.to_str().unwrap(),
-            dir2.to_str().unwrap(),
-        );
-        let item = match syn::parse_str::<Item>(&item_string) {
-            Ok(Item::Struct(i)) => i,
-            _ => panic!("Unexpected item type"),
-        };
-        let paths = parse_struct_attributes(&item.attrs).alias_paths;
-
-        let expected: HashMap<Ident, Ident> = [
-            (format_ident!("AnotherNameForU8"), format_ident!("u8")),
-            (format_ident!("AnotherNameForF32"), format_ident!("f32")),
-            (
-                format_ident!("AliasedAlias"),
-                format_ident!("AnotherNameForF32"),
-            ),
-            (format_ident!("AliasedI128"), format_ident!("i128")),
-        ]
-        .iter()
-        .cloned()
-        .collect();
-        assert_eq!(expected, type_alias_map(&paths));
     }
 
     #[test]
