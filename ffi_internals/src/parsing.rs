@@ -203,19 +203,14 @@ pub(super) fn parse_field_attributes(attrs: &[Attribute]) -> crate::field_ffi::F
 ///
 fn parse_alias_modules(arg: &NestedMeta) -> Vec<String> {
     match arg {
+        Meta(Path(path)) => {
+            return path.segments.iter().map(|s| s.ident.to_string()).collect();
+        }
         Meta(_) => {
             panic!("Unexpected meta attribute {:?}", arg);
         }
         NestedMeta::Lit(lit) => {
-            if let Lit::Str(lit_str) = lit {
-                lit_str
-                    .value()
-                    .split(',')
-                    .map(|s| s.trim().to_string())
-                    .collect()
-            } else {
-                panic!("Non-string literal attribute: {:?}", lit)
-            }
+            panic!("Unexpected literal attribute {:?}", lit);
         }
     }
 }

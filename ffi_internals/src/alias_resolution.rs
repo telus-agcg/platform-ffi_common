@@ -1,23 +1,23 @@
 //!
 //! This module provides methods for parsing aliases out of a module and writing their definitions
-//! to disk, so that when ffi_* macros encounter references to aliases defined in remote crates, the
-//! macros can identify the underlying type so they can determine safe FFI behavior. For example, if
-//! `CrateA` defines
+//! to disk, so that when ffi_* macros encounter a field whose type is an alias defined in a remote
+//! crate, the macros can identify the underlying type so they can determine safe FFI behavior. For
+//! example, if `CrateA` defines
 //! ```ignore
-//! type Foo = u16
+//! type Foo = u16;
 //! ```
-//! and `CrateB` references it
+//! and `CrateB` defines a struct with a field whose type uses that alias
 //! ```ignore
 //! use CrateA::Foo;
 //!
 //! struct Bar { foo: Foo }
 //! ```
 //!
-//! In order to `ffi_derive::FFI`, we need to be able to determine that `Foo` is `u16` and should be
-//! exposed following the same rules as `u16`. This requires us to
-//! # Parse the alias definition into data we can work with in procedural macros.
-//! # Store that data, in a format that support storage of multiple alias sources.
-//! # Read that data while deriving the FFI for types in any other crate.
+//! In order to `#[derive(ffi_derive::FFI)]` on `Bar`, we need to be able to determine that `Foo` is
+//! `u16` and should be exposed following the same rules as `u16`. This requires us to
+//! 1. Parse the alias definition into data we can work with in procedural macros.
+//! 1. Store that data, in a format that support storage of multiple alias sources.
+//! 1. Read that data while deriving the FFI for types in any other crate.
 //!
 
 use lazy_static::lazy_static;
@@ -37,25 +37,32 @@ lazy_static! {
 
 /// Describes the data for a type alias.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
-pub(super) struct AliasDefinition {
+struct AliasDefinition {
     /// The type that a newtype is defined as. In `type Foo = u16`, this is `u16`.
-    pub definition: String,
+    definition: String,
     /// Set if `definition` is itself an alias, so that we can look at the outer keys again.
-    pub definition_source: Option<String>,
+    definition_source: Option<String>,
 }
 
 /// Parses `module` to create a hashmap of alias definitions so that we can resolve aliases to their
 /// underlying types when deriving the FFI.
 ///
 pub fn parse_alias_module(resolution_key: String, module: ItemMod) -> ItemMod {
+
+    #[derive(Default)]
+    struct ModuleOutput {
+        stripped_items: Vec<Item>,
+        new_aliases: HashMap<String, AliasDefinition>
+    }
+
     // Parse the alias resolution data out of `module`.
     let (brace, items) = module
         .clone()
         .content
         .unwrap_or_else(|| panic!("No module content? {:?}", module));
-    let (stripped_items, new_aliases): (Vec<Item>, HashMap<String, AliasDefinition>) = items
+    let module_output: ModuleOutput = items
         .iter()
-        .fold((Vec::<Item>::new(), HashMap::new()), |mut acc, item| {
+        .fold(ModuleOutput::default(), |mut acc, item| {
             if let Item::Type(item_type) = item {
                 let definition_source = item_type.attrs.iter().find_map(parse_nested_alias_meta);
                 let stripped_attrs: Vec<Attribute> = item_type
@@ -75,7 +82,7 @@ pub fn parse_alias_module(resolution_key: String, module: ItemMod) -> ItemMod {
                     semi_token: item_type.semi_token,
                 };
                 let new_item = Item::Type(new_item_type);
-                acc.0.push(new_item);
+                acc.stripped_items.push(new_item);
 
                 if let Type::Path(t) = &*item_type.ty {
                     let segment = t
@@ -83,7 +90,7 @@ pub fn parse_alias_module(resolution_key: String, module: ItemMod) -> ItemMod {
                         .segments
                         .first()
                         .unwrap_or_else(|| panic!("No path segment? {:?}", t));
-                    acc.1.insert(
+                    acc.new_aliases.insert(
                         item_type.ident.to_string(),
                         AliasDefinition {
                             definition: segment.ident.to_string(),
@@ -97,19 +104,19 @@ pub fn parse_alias_module(resolution_key: String, module: ItemMod) -> ItemMod {
                     );
                 }
             } else {
-                acc.0.push(item.clone());
+                acc.stripped_items.push(item.clone());
             }
             acc
         });
 
-    update_alias_map(resolution_key, new_aliases);
+    update_alias_map(resolution_key, module_output.new_aliases);
 
     ItemMod {
         attrs: module.attrs,
         vis: module.vis,
         mod_token: module.mod_token,
         ident: module.ident,
-        content: Some((brace, stripped_items)),
+        content: Some((brace, module_output.stripped_items)),
         semi: module.semi,
     }
 }
@@ -149,7 +156,7 @@ pub(super) fn resolve_type_alias(field_type: &Ident, relevant_modules: &[String]
 
     let maybe_alias = relevant_modules
         .iter()
-        .find_map(|m| aliases_as_idents[m].get(field_type));
+        .find_map(|m| aliases_as_idents.get(m).and_then(|a| a.get(field_type)));
 
     match maybe_alias {
         Some(alias) => {
@@ -195,17 +202,14 @@ fn update_alias_map(resolution_key: String, new_aliases: HashMap<String, AliasDe
     map.insert(resolution_key, new_aliases);
 
     // Write `map`, which now also inclues the new alias resolution data for `module`, back to disk.
-    match std::fs::OpenOptions::new()
+    let file = std::fs::OpenOptions::new()
         .write(true)
         .create(true)
         .open(&*alias_map_path)
-    {
-        Ok(file) => match serde_json::to_writer(file, &map) {
-            Ok(_) => {}
-            Err(e) => println!("Error writing file {}: {}", alias_map_path, e),
-        },
-        Err(e) => println!("Error opening file {}: {}", alias_map_path, e),
-    };
+        .unwrap_or_else(|e| panic!("Error opening file to write {}: {}", alias_map_path, e));
+    
+    serde_json::to_writer(file, &map)
+        .unwrap_or_else(|e| println!("Error writing file {}: {}", alias_map_path, e));
 }
 
 /// Reads the `nested_alias` helper attribute, returning `Some(attribute_value)` if it is found,

@@ -81,9 +81,9 @@
 //! With more complicated structs (the primary focus of this library), you can similarly use a
 //! feature to control when the type is built with `ffi_derive`.
 //!
-//! Typealiases are supported, with the caveat that you have to provide a path to the file(s) in
-//! which any typealiases referenced in the definition of this type are defined (see
-//! `ffi(alias_paths("src/ids.rs"))` in the example below; if `NativeStructId` was an alias over
+//! Typealiases are supported, with the caveat that you have to provide the resolution key for the
+//! module(s) in which any typealiases used in the declaration of this type are defined (see
+//! `ffi(alias_paths(some_module_ids))` in the example below; if `NativeStructId` was an alias over
 //! `Uuid` defined in a file at that path (relative to the root of the crate), we'd figure out what
 //! type to treat that field as for the purposes of FFI.)
 //!
@@ -93,7 +93,7 @@
 //! #[cfg_attr(
 //!     feature = "cffi",
 //!     derive(ffi_derive::FFI),
-//!     ffi(alias_paths("src/ids.rs"))
+//!     ffi(alias_paths(some_module_ids))
 //! )]
 //! #[derive(Clone, Debug)]
 //! pub struct NativeStruct {
@@ -133,18 +133,18 @@
 //!
 //! See `../tests/remote_types` for an example.
 //!
-//! Similarly, sometimes a type we want to expose will reference a typealias defined in a remote
+//! Similarly, sometimes a type we want to expose will use a typealias defined in a remote
 //! crate. We support that, but because the type information that backs the alias isn't available at
 //! the time procedural macros run, we require some additional configuration in both the module that
-//! defines the alias, and on the type whose fields reference the alias.
+//! defines the alias, and on the type whose fields are defined with the alias type.
 //!
 //! ### Remote alias definitions
 //!
-//! When a module defines aliases that may be referenced by a type that derives an FFI, the
+//! When a module defines aliases that may be used on a type that derives an FFI, the
 //! `alias_resolution` attribute macro needs to be run on it in order to populate the definitions of
-//! those aliases somewhere so that we can reference them when resolving the underlying types of
-//! alias references. The macro invocation also needs to define a unique string for the module
-//! (which we refer to internally as the `resolution_key`). This will be used with a helper
+//! those aliases somewhere so that we can look them up when resolving the underlying types of
+//! fields whose type is an alias. The macro invocation also needs to define a unique string for the
+//! module (which we refer to internally as the `resolution_key`). This will be used with a helper
 //! attribute on types that derive an FFI so that we can identify the source where their aliases are
 //! defined.
 //!
@@ -172,11 +172,11 @@
 //! }
 //! ```
 //!
-//! ### Remote alias references
+//! ### Remote aliases in type definitions
 //!
-//! When a type derives an FFI includes a field whose type is an alias defined in a remote crate,
+//! When an `ffi_derive` type includes a field whose type is an alias defined in a remote crate,
 //! the `ffi_derive` macro invocation just needs to include the helper attribute
-//! `ffi(alias_modules("a_key"))` to tell us the resolution key of the module in which those aliases
+//! `ffi(alias_modules(a_key))` to tell us the resolution keys of the modules in which those aliases
 //! are defined. For example:
 //! ```ignore
 //! #[ffi_derive::alias_resolution(crate1_aliases)]
@@ -194,9 +194,9 @@
 //! provides multiple keys in `alias_modules`, and an identical alias is defined in each of those
 //! modules, we may interpret the type incorrectly. If that scenario comes up, we can work around it
 //! by moving the helper attribute from the struct to the individual fields (since there we only
-//! need to reference one alias_module at a time), but it gets awfully tedious, so we're not doing
+//! need to point to one alias_module at a time), but it gets awfully tedious, so we're not doing
 //! that yet. Second, if a type is renamed when it's imported (as in
-//! `use crate1::aliases::Foo as Meow`), or uses a qualified reference instead of an import (as in
+//! `use crate1::aliases::Foo as Meow`), or uses a fully qualified path instead of an import (as in
 //! `pub field foo: crate1::aliases::Foo`), we won't be able to figure out how to go from that
 //! definition to `Foo` to `u8`.
 //!
