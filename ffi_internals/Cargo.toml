@@ -8,8 +8,11 @@ repository = "https://github.com/agrian-inc/ffi_common"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-proc-macro2 = "1.0"
-quote = "1.0"
-syn = { version = "1.0", features = ["full"] }
 ffi_common = { version = "0.2", registry = "agrian-registry" }
 heck = "0.3"
+lazy_static = "1.4.0"
+proc-macro2 = "1.0"
+quote = "1.0"
+serde = "1.0"
+serde_json = "1.0"
+syn = { version = "1.0", features = ["full"] }
