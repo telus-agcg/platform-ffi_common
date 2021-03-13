@@ -4,7 +4,6 @@
 //!
 
 use crate::{parsing, parsing::WrappingType};
-use heck::CamelCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, Type};
@@ -24,9 +23,10 @@ static I64: &str = "i64";
 static F32: &str = "f32";
 static F64: &str = "f64";
 
-/// The type of a field on a struct (from the perspective of generating an FFI).
+/// Describes a Rust type that is exposed via FFI (as the type of a field, or the type returned by a
+/// function, or a function parameter, etc).
 ///
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NativeType {
     /// A type that should be exposed behind on opaque pointer; we'll make this available as a
     /// `*const T`, and consumers of that interface will be able to initialize, free, and access
@@ -84,17 +84,26 @@ pub enum Context {
     Return,
 }
 
+/// Describes the supported language-level generic wrappers around a `NativeType`, so that we can
+/// expose an `Option<Foo>` or even a `Result<Vec<Foo>>`.
+///
+/// It's worth noting that these are only supported one level deep; we won't be able to expose a
+/// `Vec<Vec<Foo>>` without making some larger improvements to the way we parse types.
+///
 #[derive(Debug)]
 pub struct NativeTypeData {
-    /// The native Rust type of the field.
+    /// The underlying type being exposed.
     ///
     pub native_type: NativeType,
-    /// True if this field is an `Option`, otherwise false.
+    /// True if `native_type` is wrapped in an `Option`, otherwise false.
     ///
     pub option: bool,
-    /// True if this field is a `Vec`, otherwise false.
+    /// True if `native_type` is the type of the elements in a `Vec` or slice, otherwise false.
     ///
     pub vec: bool,
+    /// True if `native_type` is the type of the `Success` variant of a `Result`, otherwise false.
+    ///
+    pub result: bool,
 }
 
 impl From<(NativeType, WrappingType)> for NativeTypeData {
@@ -105,6 +114,154 @@ impl From<(NativeType, WrappingType)> for NativeTypeData {
             option: wrapping_type == WrappingType::Option
                 || wrapping_type == WrappingType::OptionVec,
             vec: wrapping_type == WrappingType::Vec || wrapping_type == WrappingType::OptionVec,
+            result: false,
+        }
+    }
+}
+
+/// Describes the initial state when parsing a `syn::Type`, where we have not yet determined
+/// whether the underlying type is wrapped in an `Option`, `Vec`, or `Result`.
+///
+/// This is basically an intermediary type to make it easier to get to `NativeTypeData`. Usage
+/// should look something like this:
+/// ```
+/// use quote::format_ident;
+/// use ffi_internals::native_type_data::{UnparsedNativeTypeData, NativeTypeData, NativeType};
+///
+/// let ty: syn::Type = syn::parse_str("Result<Foo>").unwrap();
+/// let initial = UnparsedNativeTypeData::initial(ty);
+/// let native_type_data = NativeTypeData::from(initial);
+/// assert_eq!(native_type_data.native_type, NativeType::Boxed(format_ident!("Foo")));
+/// assert_eq!(native_type_data.result, true);
+/// assert_eq!(native_type_data.option, false);
+/// assert_eq!(native_type_data.vec, false);
+/// ```
+///
+#[derive(Debug, Clone)]
+pub struct UnparsedNativeTypeData {
+    /// The type being parsed.
+    pub ty: Type,
+    /// Whether `ty` was discovered inside of an `Option`.
+    pub option: bool,
+    /// Whether `ty` was discovered inside of a `Vec`, `Array`, or slice.
+    pub vec: bool,
+    /// Whether `ty` was discovered in the `Success` variant of a `Result`.
+    pub result: bool,
+}
+
+impl UnparsedNativeTypeData {
+    /// The initial state for `UnparsedNativeTypeData`, where the `option`, `vec` and `result`
+    /// fields are all set to false.
+    ///
+    pub fn initial(ty: Type) -> Self {
+        Self {
+            ty,
+            option: false,
+            vec: false,
+            result: false,
+        }
+    }
+}
+
+impl From<UnparsedNativeTypeData> for NativeTypeData {
+    fn from(unparsed: UnparsedNativeTypeData) -> Self {
+        match unparsed.ty {
+            Type::Array(ty) => Self::from(UnparsedNativeTypeData {
+                ty: *ty.elem,
+                option: unparsed.option,
+                vec: true,
+                result: unparsed.result,
+            }),
+            Type::Path(ty) => {
+                let segment = ty.path.segments.last().unwrap();
+                let ident = segment.ident.clone();
+                if ident == format_ident!("Option") {
+                    if let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments {
+                        if let syn::GenericArgument::Type(arg) = arguments.args.first().unwrap() {
+                            Self::from(UnparsedNativeTypeData {
+                                ty: arg.clone(),
+                                option: true,
+                                vec: unparsed.vec,
+                                result: unparsed.result,
+                            })
+                        } else {
+                            panic!("Unexpected arguments for Option: {:?}", arguments);
+                        }
+                    } else {
+                        panic!("Unexpected segment contents for Option: {:?}", segment);
+                    }
+                } else if ident == format_ident!("Result") {
+                    if let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments {
+                        // Take the first generic argument, which is the success type.
+                        if let syn::GenericArgument::Type(arg) = arguments.args.first().unwrap() {
+                            Self::from(UnparsedNativeTypeData {
+                                ty: arg.clone(),
+                                option: unparsed.option,
+                                vec: unparsed.vec,
+                                result: true,
+                            })
+                        } else {
+                            panic!("Unexpected arguments for Result: {:?}", arguments);
+                        }
+                    } else {
+                        panic!("Unexpected segment contents for Result: {:?}", segment);
+                    }
+                } else if ident == format_ident!("Vec") {
+                    if let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments {
+                        if let syn::GenericArgument::Type(arg) = arguments.args.first().unwrap() {
+                            Self::from(UnparsedNativeTypeData {
+                                ty: arg.clone(),
+                                option: unparsed.option,
+                                vec: true,
+                                result: unparsed.result,
+                            })
+                        } else {
+                            panic!("Unexpected arguments for Vec: {:?}", arguments);
+                        }
+                    } else {
+                        panic!("Unexpected segment contents for Vec: {:?}", segment);
+                    }
+                } else {
+                    let native_type = NativeType::from(ident);
+                    NativeTypeData {
+                        native_type,
+                        option: unparsed.option,
+                        vec: unparsed.vec,
+                        result: unparsed.result,
+                    }
+                }
+            }
+            Type::Ptr(ty) => Self::from(UnparsedNativeTypeData {
+                ty: *ty.elem,
+                option: unparsed.option,
+                vec: unparsed.vec,
+                result: unparsed.result,
+            }),
+            Type::Reference(ty) => Self::from(UnparsedNativeTypeData {
+                ty: *ty.elem,
+                option: unparsed.option,
+                vec: unparsed.vec,
+                result: unparsed.result,
+            }),
+            Type::Slice(ty) => Self::from(UnparsedNativeTypeData {
+                ty: *ty.elem,
+                option: unparsed.option,
+                vec: true,
+                result: unparsed.result,
+            }),
+            Type::TraitObject(_)
+            | Type::Tuple(_)
+            | Type::BareFn(_)
+            | Type::Group(_)
+            | Type::ImplTrait(_)
+            | Type::Infer(_)
+            | Type::Macro(_)
+            | Type::Never(_)
+            | Type::Paren(_)
+            | Type::Verbatim(_)
+            | _ => {
+                panic!("Unsupported type: {:?}", unparsed.ty);
+            }
         }
     }
 }
@@ -149,7 +306,7 @@ impl NativeTypeData {
                 // Replace the inner type for FFI with whatever the `expose_as` told us to use.
                 let inner = expose_as.unwrap_or(inner);
                 if self.vec {
-                    let ident = format_ident!("FFIArray{}", inner.to_string().to_camel_case());
+                    let ident = format_ident!("FFIArray{}", inner.to_string());
                     quote!(#ident)
                 } else if self.option {
                     // Option types are behind a pointer, because embedding structs in parameter
@@ -198,6 +355,23 @@ impl NativeTypeData {
 
         t
     }
+
+    pub fn owned_native_type(&self) -> TokenStream {
+        let t = match &self.native_type {
+            NativeType::Boxed(inner) => quote!(#inner),
+            NativeType::DateTime => quote!(datetime),
+            NativeType::Raw(inner) => quote!(#inner),
+            NativeType::String => quote!(String),
+            NativeType::Uuid => quote!(Uuid),
+        };
+        let t = if self.vec {
+            quote!(Vec::<#t>)
+        } else {
+            quote!(#t)
+        };
+        let t = if self.option { quote!(Option::<#t>) } else { t };
+        t
+    }
 }
 
 /// Returns a `NativeTypeData` describing the native type for a custom FFI type, so we can use that
@@ -222,12 +396,14 @@ pub fn native_type_data_for_custom(ffi_type: &syn::Type) -> NativeTypeData {
                         native_type: NativeType::String,
                         option: true,
                         vec: false,
+                        result: false,
                     }
                 } else {
                     NativeTypeData {
                         native_type: NativeType::Boxed(type_name),
                         option: true,
                         vec: false,
+                        result: false,
                     }
                 }
             } else {

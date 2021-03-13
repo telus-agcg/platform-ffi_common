@@ -5,11 +5,8 @@
 use std::fs::File;
 use std::io::Read;
 use syn::{
-    Attribute, GenericArgument, Ident, Item, Lit,
-    Meta::{List, NameValue, Path},
-    NestedMeta,
-    NestedMeta::Meta,
-    PathArguments, PathSegment, Type,
+    Attribute, GenericArgument, Ident, Item, Lit, Meta, NestedMeta, Path, PathArguments,
+    PathSegment, Type,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -31,10 +28,10 @@ pub(super) enum WrappingType {
 pub fn is_repr_c(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.parse_meta().map_or(false, |m| {
-            if let List(l) = m {
+            if let Meta::List(l) = m {
                 if l.path.segments.first().map(|s| s.ident.to_string()) == Some("repr".to_string())
                 {
-                    if let Meta(m) = l.nested.first().unwrap_or_else(|| panic!(format!("Expected attribute list to include metadata: {:?} to have an identifier.", &l))) {
+                    if let NestedMeta::Meta(m) = l.nested.first().unwrap_or_else(|| panic!(format!("Expected attribute list to include metadata: {:?} to have an identifier.", &l))) {
                         return m.path().segments.first().map(|s| s.ident.to_string()) == Some("C".to_string());
                     }
                 }
@@ -139,7 +136,7 @@ fn parse_ffi_meta(attr: &Attribute) -> Result<Vec<NestedMeta>, ()> {
     }
 
     match attr.parse_meta() {
-        Ok(List(meta)) => Ok(meta.nested.into_iter().collect()),
+        Ok(Meta::List(meta)) => Ok(meta.nested.into_iter().collect()),
         Ok(other) => {
             panic!("Unexpected meta attribute found: {:?}", other);
         }
@@ -147,6 +144,19 @@ fn parse_ffi_meta(attr: &Attribute) -> Result<Vec<NestedMeta>, ()> {
             panic!("Error parsing meta attribute: {:?}", err);
         }
     }
+}
+
+pub fn parse_fn_attributes(args: &[NestedMeta]) -> Vec<Path> {
+    args.iter()
+        .filter_map(|arg| {
+            if let NestedMeta::Lit(meta) = arg {
+                if let Lit::Str(lit) = meta {
+                    return syn::parse_str(&lit.value()).ok();
+                }
+            }
+            None
+        })
+        .collect()
 }
 
 pub struct StructAttributes {
@@ -159,12 +169,12 @@ pub fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
     let mut custom_path: Option<String> = None;
     for meta_item in attrs.iter().flat_map(parse_ffi_meta).flatten() {
         match &meta_item {
-            Meta(NameValue(m)) if m.path.is_ident("custom") => {
+            NestedMeta::Meta(Meta::NameValue(m)) if m.path.is_ident("custom") => {
                 if let Lit::Str(lit) = &m.lit {
                     custom_path = Some(lit.value());
                 }
             }
-            Meta(List(l)) if l.path.is_ident("alias_modules") => {
+            NestedMeta::Meta(Meta::List(l)) if l.path.is_ident("alias_modules") => {
                 alias_modules.extend(l.nested.iter().flat_map(parse_alias_modules));
             }
             other => {
@@ -178,17 +188,19 @@ pub fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
     }
 }
 
-pub(super) fn parse_field_attributes(attrs: &[Attribute]) -> crate::field_ffi::FieldAttributes {
+pub(super) fn parse_field_attributes(
+    attrs: &[Attribute],
+) -> crate::struct_internals::field_ffi::FieldAttributes {
     let mut expose_as: Option<syn::Path> = None;
     let mut raw = false;
     for meta_item in attrs.iter().flat_map(parse_ffi_meta).flatten() {
         match &meta_item {
-            Meta(NameValue(m)) if m.path.is_ident("expose_as") => {
+            NestedMeta::Meta(Meta::NameValue(m)) if m.path.is_ident("expose_as") => {
                 if let Lit::Str(lit) = &m.lit {
                     expose_as = Some(syn::parse_str(&lit.value()).expect("Not a valid path"));
                 }
             }
-            Meta(Path(p)) if p.is_ident("raw") => {
+            NestedMeta::Meta(Meta::Path(p)) if p.is_ident("raw") => {
                 raw = true;
             }
             other => {
@@ -196,17 +208,17 @@ pub(super) fn parse_field_attributes(attrs: &[Attribute]) -> crate::field_ffi::F
             }
         }
     }
-    crate::field_ffi::FieldAttributes { expose_as, raw }
+    crate::struct_internals::field_ffi::FieldAttributes { expose_as, raw }
 }
 
 /// Dig the paths out of a struct attribute argument and collect them into a `Vec<String>`.
 ///
 fn parse_alias_modules(arg: &NestedMeta) -> Vec<String> {
     match arg {
-        Meta(Path(path)) => {
+        NestedMeta::Meta(Meta::Path(path)) => {
             return path.segments.iter().map(|s| s.ident.to_string()).collect();
         }
-        Meta(_) => {
+        NestedMeta::Meta(_) => {
             panic!("Unexpected meta attribute {:?}", arg);
         }
         NestedMeta::Lit(lit) => {

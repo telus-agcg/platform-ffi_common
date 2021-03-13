@@ -17,7 +17,8 @@ pub(super) fn build(module_name: &Ident, type_name: &Ident, out_dir: &str) -> To
         type_name: type_name.to_string(),
     };
 
-    ffi_internals::write_consumer_files(type_name, consumer.into(), out_dir);
+    let file_name = format!("{}.swift", type_name.to_string());
+    ffi_internals::write_consumer_file(&file_name, consumer.into(), out_dir);
 
     quote! {
         #[allow(missing_docs)]

@@ -2,7 +2,7 @@
 //! Generates boilerplate code for using a repr(C) enum in the consumer's language.
 //!
 
-use heck::{CamelCase, SnakeCase};
+use heck::SnakeCase;
 
 /// Contains the data required generate consumer support for a repr(C) enum.
 ///
@@ -13,7 +13,7 @@ pub struct ConsumerEnum {
 
 impl ConsumerEnum {
     fn array_name(&self) -> String {
-        format!("FFIArray{}", self.type_name.to_camel_case())
+        format!("FFIArray{}", self.type_name)
     }
 
     fn array_init(&self) -> String {

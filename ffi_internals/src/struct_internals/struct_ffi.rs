@@ -3,7 +3,7 @@
 //! consumer implementations.
 //!
 
-use crate::field_ffi::FieldFFI;
+use crate::struct_internals::field_ffi::FieldFFI;
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};

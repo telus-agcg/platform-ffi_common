@@ -4,7 +4,7 @@
 //! feature could simply provide full implementations here.)
 //!
 
-use heck::{CamelCase, SnakeCase};
+use heck::SnakeCase;
 
 /// Generates a string with the protocol conformances for `native_type`. This needs to be written to
 /// a file that can be copied to the consumer application/library/whatever.
@@ -20,7 +20,7 @@ use heck::{CamelCase, SnakeCase};
 ///
 pub(super) fn generate(native_type: &str, ffi_type: &str, consumer_type: &str) -> String {
     let mut output = array_conformance(
-        &format!("FFIArray{}", native_type.to_camel_case()),
+        &format!("FFIArray{}", native_type),
         ffi_type,
         &format!("ffi_array_{}_init", native_type.to_snake_case()),
         &format!("ffi_array_{}_free", native_type.to_snake_case()),
@@ -34,7 +34,7 @@ pub(super) fn generate(native_type: &str, ffi_type: &str, consumer_type: &str) -
     output.push_str(&consumer_type_base(consumer_type, ffi_type));
     output.push_str(&consumer_array_type(
         consumer_type,
-        &format!("FFIArray{}", native_type.to_camel_case()),
+        &format!("FFIArray{}", native_type),
     ));
     output
 }

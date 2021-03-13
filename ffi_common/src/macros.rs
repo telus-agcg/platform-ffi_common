@@ -56,7 +56,7 @@ the FFI boundary) so we can take care of those steps.
             #[repr(C)]
             #[allow(missing_copy_implementations)]
             #[derive(Clone, Debug)]
-            pub struct [<FFIArray $t:camel>] {
+            pub struct [<FFIArray $t>] {
                 #[doc = "Pointer to the first element in the array."]
                 pub ptr: *const $t,
                 #[doc = "The length of (i.e. the number of elements in) this array."]
@@ -87,9 +87,9 @@ simplify memory management.
             pub unsafe extern "C" fn [<ffi_array_ $t:snake _init>](
                 ptr: *const $t,
                 len: isize,
-            ) -> [<FFIArray $t:camel>] {
+            ) -> [<FFIArray $t>] {
                 if ptr.is_null() {
-                    [<FFIArray $t:camel>] {
+                    [<FFIArray $t>] {
                         ptr: std::ptr::null(),
                         len: 0,
                         cap: 0
@@ -120,7 +120,7 @@ unallocated memory if, for example, you pass an array that represents the `None`
 `Option<Vec<T>>`.
             """]
             #[no_mangle]
-            pub extern "C" fn [<ffi_array_ $t:snake _free>](array: [<FFIArray $t:camel>]) {
+            pub extern "C" fn [<ffi_array_ $t:snake _free>](array: [<FFIArray $t>]) {
                 if array.ptr.is_null() {
                     return;
                 }
@@ -129,7 +129,7 @@ unallocated memory if, for example, you pass an array that represents the `None`
                 }
             }
 
-            impl From<&[$t]> for [<FFIArray $t:camel>] {
+            impl From<&[$t]> for [<FFIArray $t>] {
                 fn from(slice: &[$t]) -> Self {
                     let v: std::mem::ManuallyDrop<Vec<$t>> = std::mem::ManuallyDrop::new(slice.to_vec());
                     let len = v.len();
@@ -140,7 +140,7 @@ unallocated memory if, for example, you pass an array that represents the `None`
                 }
             }
 
-            impl From<Option<&[$t]>> for [<FFIArray $t:camel>] {
+            impl From<Option<&[$t]>> for [<FFIArray $t>] {
                 fn from(opt: Option<&[$t]>) -> Self {
                     opt.map_or(
                         Self {
@@ -154,16 +154,16 @@ unallocated memory if, for example, you pass an array that represents the `None`
             }
 
             #[allow(clippy::use_self)]
-            impl From<[<FFIArray $t:camel>]> for Vec<$t> {
-                fn from(array: [<FFIArray $t:camel>]) -> Self {
+            impl From<[<FFIArray $t>]> for Vec<$t> {
+                fn from(array: [<FFIArray $t>]) -> Self {
                     unsafe {
                         Vec::from_raw_parts(array.ptr as *mut $t, array.len, array.cap)
                     }
                 }
             }
 
-            impl From<[<FFIArray $t:camel>]> for Option<Vec<$t>> {
-                fn from(array: [<FFIArray $t:camel>]) -> Self {
+            impl From<[<FFIArray $t>]> for Option<Vec<$t>> {
+                fn from(array: [<FFIArray $t>]) -> Self {
                     if array.ptr.is_null() {
                         None
                     } else {
@@ -262,7 +262,7 @@ side of the FFI boundary) so we can take care of those steps.
             #[repr(C)]
             #[allow(missing_copy_implementations)]
             #[derive(Clone, Debug)]
-            pub struct [<FFIArray $t:camel>] {
+            pub struct [<FFIArray $t>] {
                 #[doc = "Pointer to the first element in the array."]
                 pub ptr: *const *const $t,
                 #[doc = "The length of (i.e. the number of elements in) this array."]
@@ -293,9 +293,9 @@ simplify memory management.
             pub unsafe extern "C" fn [<ffi_array_ $t:snake _init>](
                 ptr: *const *const $t,
                 len: isize,
-            ) -> [<FFIArray $t:camel>] {
+            ) -> [<FFIArray $t>] {
                 if ptr.is_null() {
-                    [<FFIArray $t:camel>] {
+                    [<FFIArray $t>] {
                         ptr: std::ptr::null(),
                         len: 0,
                         cap: 0
@@ -310,7 +310,7 @@ simplify memory management.
                 }
             }
 
-            impl From<&[$t]> for [<FFIArray $t:camel>] {
+            impl From<&[$t]> for [<FFIArray $t>] {
                 fn from(slice: &[$t]) -> Self {
                     let v: std::mem::ManuallyDrop<Vec<*const $t>> = std::mem::ManuallyDrop::new(
                         slice.iter()
@@ -328,7 +328,7 @@ simplify memory management.
                 }
             }
 
-            impl From<Option<&[$t]>> for [<FFIArray $t:camel>] {
+            impl From<Option<&[$t]>> for [<FFIArray $t>] {
                 fn from(opt: Option<&[$t]>) -> Self {
                     opt.map_or(
                         Self {
@@ -341,8 +341,8 @@ simplify memory management.
                 }
             }
 
-            impl From<[<FFIArray $t:camel>]> for Vec<$t> {
-                fn from(array: [<FFIArray $t:camel>]) -> Self {
+            impl From<[<FFIArray $t>]> for Vec<$t> {
+                fn from(array: [<FFIArray $t>]) -> Self {
                     unsafe {
                         Vec::from_raw_parts(array.ptr as *mut *const $t, array.len, array.cap)
                             .into_iter()
@@ -352,8 +352,8 @@ simplify memory management.
                 }
             }
 
-            impl From<[<FFIArray $t:camel>]> for Option<Vec<$t>> {
-                fn from(array: [<FFIArray $t:camel>]) -> Self {
+            impl From<[<FFIArray $t>]> for Option<Vec<$t>> {
+                fn from(array: [<FFIArray $t>]) -> Self {
                     if array.ptr.is_null() {
                         None
                     } else {
@@ -378,7 +378,7 @@ unallocated memory if, for example, you pass an array that represents the `None`
 `Option<Vec<T>>`.
             """]
             #[no_mangle]
-            pub extern "C" fn [<ffi_array_ $t:snake _free>](array: [<FFIArray $t:camel>]) {
+            pub extern "C" fn [<ffi_array_ $t:snake _free>](array: [<FFIArray $t>]) {
                 if array.ptr.is_null() {
                     return;
                 }
