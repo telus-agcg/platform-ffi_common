@@ -119,6 +119,109 @@ impl From<(NativeType, WrappingType)> for NativeTypeData {
     }
 }
 
+impl NativeTypeData {
+    pub fn argument_into_rust(&self, field_name: &Ident, has_custom_implementation: bool) -> TokenStream {
+        // All FFIArrayT types have a `From<FFIArrayT> for Vec<T>` impl, so we can treat them all
+        // the same for the sake of native Rust assignment.
+        if self.vec {
+            return quote!(#field_name.into());
+        }
+
+        match self.native_type {
+            NativeType::Boxed(_) => {
+                if has_custom_implementation {
+                    // The expose_as type will take care of its own optionality and cloning; all
+                    // we need to do is make sure the pointer is safe (if this field is optional),
+                    // then let it convert with `into()`.
+                    if self.option {
+                        quote! {
+                            unsafe {
+                                if #field_name.is_null() {
+                                    None
+                                } else {
+                                    (*Box::from_raw(#field_name)).into()
+                                }
+                            }
+                        }
+                    } else {
+                        quote! {
+                            unsafe { (*Box::from_raw(#field_name)).into() }
+                        }
+                    }
+                } else if self.option {
+                    quote! {
+                        unsafe {
+                            if #field_name.is_null() {
+                                None
+                            } else {
+                                Some(*Box::from_raw(#field_name))
+                            }
+                        }
+                    }
+                } else {
+                    quote!(unsafe { *Box::from_raw(#field_name) })
+                }
+            }
+            NativeType::DateTime => {
+                if self.option {
+                    quote! {
+                        unsafe {
+                            if #field_name.is_null() {
+                                None
+                            } else {
+                                Some((&*Box::from_raw(#field_name)).into())
+                            }
+                        }
+                    }
+                } else {
+                    quote!(unsafe { (&*Box::from_raw(#field_name)).into() })
+                }
+            }
+            NativeType::Raw(_) => {
+                if self.option {
+                    quote! {
+                        unsafe {
+                            if #field_name.is_null() {
+                                None
+                            } else {
+                                Some(*Box::from_raw(#field_name))
+                            }
+                        }
+                    }
+                } else {
+                    quote!(#field_name)
+                }
+            }
+            NativeType::String => {
+                if self.option {
+                    quote! {
+                        if #field_name.is_null() {
+                            None
+                        } else {
+                            Some(ffi_common::string::string_from_c(#field_name))
+                        }
+                    }
+                } else {
+                    quote!(ffi_common::string::string_from_c(#field_name))
+                }
+            }
+            NativeType::Uuid => {
+                if self.option {
+                    quote! {
+                        if #field_name.is_null() {
+                            None
+                        } else {
+                            Some(ffi_common::string::uuid_from_c(#field_name))
+                        }
+                    }
+                } else {
+                    quote!(ffi_common::string::uuid_from_c(#field_name))
+                }
+            }
+        }
+    }
+}
+
 /// Describes the initial state when parsing a `syn::Type`, where we have not yet determined
 /// whether the underlying type is wrapped in an `Option`, `Vec`, or `Result`.
 ///

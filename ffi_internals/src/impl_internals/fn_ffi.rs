@@ -61,7 +61,7 @@ impl FnFFI {
     pub fn generate_ffi(&self, type_name: &Ident, type_as_parameter_name: Ident) -> TokenStream {
         // If the native function takes a receiver, we'll include an parameter for a pointer to an
         // instance of this type and a line in the function body for dereferencing the pointer.
-        let (receiver_arg, conversion) = if self.has_receiver {
+        let (receiver_arg, receiver_conversion) = if self.has_receiver {
             (
                 quote!(#type_as_parameter_name: *const #type_name, ),
                 quote!(let data = (*#type_as_parameter_name).clone();),
@@ -72,14 +72,15 @@ impl FnFFI {
         let (signature_args, calling_args, parameter_conversions) =
             self.parameters
                 .iter()
-                .fold((receiver_arg, quote!(), conversion), |mut acc, arg| {
+                .fold((receiver_arg, quote!(), receiver_conversion), |mut acc, arg| {
                     let name = arg.name.clone();
                     let ty = arg.native_type_data.ffi_type(None, &Context::Argument);
                     let signature_parameter = quote!(#name: #ty, );
                     // TODO: This assumes a collection type should always be dereferenced to a slice
-                    // and borrowed, which is not necessarily the case. We should be able to figure
-                    // that out from the syn collection types...just need to support them more
-                    // completely instead of stripping down to "is a collection".
+                    // and borrowed when passed to the native function, which is not necessarily the
+                    // case. We should be able to figure that out from the syn collection types...we
+                    // just need to support them more completely instead of stripping down to "is a
+                    // collection".
                     let symbols = if arg.native_type_data.vec {
                         quote!(&*)
                     } else {
@@ -88,11 +89,11 @@ impl FnFFI {
                     let calling_arg = quote!(#symbols#name, );
 
                     let native_type = arg.native_type_data.owned_native_type();
-                    let conversion = quote!(let #name: #native_type = #name.into(););
-
+                    let conversion = arg.native_type_data.argument_into_rust(&name, false);
+                    let assignment_and_conversion = quote!(let #name: #native_type = #conversion;);
                     acc.0.extend(signature_parameter);
                     acc.1.extend(calling_arg);
-                    acc.2.extend(conversion);
+                    acc.2.extend(assignment_and_conversion);
                     acc
                 });
 

@@ -202,17 +202,21 @@
 //!
 //! ## Deriving on an impl
 //!
-//! We also support generating an FFI for a trait implemented on a type with the `expose_items`
-//! attribute macro.
+//! We also support generating an FFI for trait implementations with the `expose_items` attribute
+//! macro.
 //!
-//! The only caveat here is that the invocation site needs to provide the paths to the FFI modules
-//! that we'll need to import. For example, the FFI form of a function like
+//! Couple of limitations here:
+//! 1. As mentioned above, we currently only support trait implementations (because we use the trait
+//! name + type name to generate a unique module name as a container for the FFI functions).
+//! Inherent implementations (like `impl Foo { ... }`) won't work (yet).
+//! 1. The invocation site needs to provide the paths to the FFI modules that we'll need to import.
+//! For example, the FFI form of a function like 
 //! `fn meow(&self, volume: Option<Volume>) -> Vec<Meow> { ... }` will need to know the paths to the
 //! FFI types of `Meow` and `Volume`. Fortunately, since those FFI types probably come from
-//! `ffi_derive`, it's relatively easy to figure out what they would be based on your normal
-//! imports. If you do something like `use crate::animals::cats::Meow;` and
-//! `use utilities::sound::Volume;`, you'll just need to provide
-//! `"crate::animals::cats::meow_ffi", "utilities::sound::volume_ffi"` to the attribute macro.
+//! `ffi_derive`, it's easy to figure out what they would be based on your normal imports. If you do
+//! something like `use crate::animals::cats::Meow;` and `use utilities::sound::Volume;`, you'll
+//! just need to provide `"crate::animals::cats::meow_ffi", "utilities::sound::volume_ffi"` to the
+//! attribute macro.
 //!
 //! Invoking the `expose_items` macro looks like this:
 //! ```ignore

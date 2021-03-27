@@ -201,105 +201,10 @@ impl FieldFFI {
     #[must_use]
     pub fn assignment_expression(&self) -> TokenStream {
         let field_name = &self.field_name;
-
-        // All FFIArrayT types have a `From<FFIArrayT> for Vec<T>` impl, so we can treat them all
-        // the same for the sake of native Rust assignment.
-        if self.native_type_data.vec {
-            return quote!(#field_name: #field_name.into(),);
-        }
-
-        match self.native_type_data.native_type {
-            NativeType::Boxed(_) => {
-                if self.attributes.expose_as.is_some() {
-                    // The expose_as type will take care of its own optionality and cloning; all
-                    // we need to do is make sure the pointer is safe (if this field is optional),
-                    // then let it convert with `into()`.
-                    if self.native_type_data.option {
-                        quote! {
-                            #field_name: unsafe {
-                                if #field_name.is_null() {
-                                    None
-                                } else {
-                                    (*Box::from_raw(#field_name)).into()
-                                }
-                            },
-                        }
-                    } else {
-                        quote! {
-                            #field_name: unsafe { (*Box::from_raw(#field_name)).into() },
-                        }
-                    }
-                } else if self.native_type_data.option {
-                    quote! {
-                        #field_name: unsafe {
-                            if #field_name.is_null() {
-                                None
-                            } else {
-                                Some(*Box::from_raw(#field_name))
-                            }
-                        },
-                    }
-                } else {
-                    quote!(#field_name: unsafe { *Box::from_raw(#field_name) },)
-                }
-            }
-            NativeType::DateTime => {
-                if self.native_type_data.option {
-                    quote! {
-                        #field_name: unsafe {
-                            if #field_name.is_null() {
-                                None
-                            } else {
-                                Some((&*Box::from_raw(#field_name)).into())
-                            }
-                        },
-                    }
-                } else {
-                    quote!(#field_name: unsafe { (&*Box::from_raw(#field_name)).into() },)
-                }
-            }
-            NativeType::Raw(_) => {
-                if self.native_type_data.option {
-                    quote! {
-                        #field_name: unsafe {
-                            if #field_name.is_null() {
-                                None
-                            } else {
-                                Some(*Box::from_raw(#field_name))
-                            }
-                        },
-                    }
-                } else {
-                    quote!(#field_name: #field_name,)
-                }
-            }
-            NativeType::String => {
-                if self.native_type_data.option {
-                    quote! {
-                        #field_name: if #field_name.is_null() {
-                            None
-                        } else {
-                            Some(ffi_common::string::string_from_c(#field_name))
-                        },
-                    }
-                } else {
-                    quote!(#field_name: ffi_common::string::string_from_c(#field_name),)
-                }
-            }
-            NativeType::Uuid => {
-                if self.native_type_data.option {
-                    quote! {
-                        #field_name: if #field_name.is_null() {
-                            None
-                        } else {
-                            Some(ffi_common::string::uuid_from_c(#field_name))
-                        },
-                    }
-                } else {
-                    quote!(#field_name: ffi_common::string::uuid_from_c(#field_name),)
-                }
-            }
-        }
+        let conversion = self.native_type_data.argument_into_rust(
+            &self.field_name,
+            self.attributes.expose_as.is_some());
+        quote!(#field_name: #conversion,)
     }
 }
 
