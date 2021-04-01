@@ -120,7 +120,11 @@ impl From<(NativeType, WrappingType)> for NativeTypeData {
 }
 
 impl NativeTypeData {
-    pub fn argument_into_rust(&self, field_name: &Ident, has_custom_implementation: bool) -> TokenStream {
+    pub fn argument_into_rust(
+        &self,
+        field_name: &Ident,
+        has_custom_implementation: bool,
+    ) -> TokenStream {
         // All FFIArrayT types have a `From<FFIArrayT> for Vec<T>` impl, so we can treat them all
         // the same for the sake of native Rust assignment.
         if self.vec {
@@ -245,11 +249,11 @@ pub struct UnparsedNativeTypeData {
     /// The type being parsed.
     pub ty: Type,
     /// Whether `ty` was discovered inside of an `Option`.
-    pub option: bool,
+    pub is_option: bool,
     /// Whether `ty` was discovered inside of a `Vec`, `Array`, or slice.
-    pub vec: bool,
+    pub is_collection: bool,
     /// Whether `ty` was discovered in the `Success` variant of a `Result`.
-    pub result: bool,
+    pub is_result: bool,
 }
 
 impl UnparsedNativeTypeData {
@@ -259,99 +263,101 @@ impl UnparsedNativeTypeData {
     pub fn initial(ty: Type) -> Self {
         Self {
             ty,
-            option: false,
-            vec: false,
-            result: false,
+            is_option: false,
+            is_collection: false,
+            is_result: false,
+        }
+    }
+}
+
+enum SupportedGeneric {
+    Option,
+    Vec,
+    Result,
+}
+use std::convert::TryFrom;
+impl TryFrom<&str> for SupportedGeneric {
+    type Error = &'static str;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "Option" => Ok(Self::Option),
+            "Vec" => Ok(Self::Vec),
+            "Result" => Ok(Self::Result),
+            _ => {
+                Err("Not a supported generic. Assume this is a non-generic type that we can parse.")
+            }
         }
     }
 }
 
 impl From<UnparsedNativeTypeData> for NativeTypeData {
-    fn from(unparsed: UnparsedNativeTypeData) -> Self {
+    fn from(mut unparsed: UnparsedNativeTypeData) -> Self {
+        // Note that this match intentionally performs a partial move. If we need to call this
+        // recursively, we'll be passing `unparsed` back to the same method, but we should always
+        // have updated `unparsed.ty` with the newly discovered type. The partial move ensures that
+        // the compiler will yell at you if you forget to assign a new value to `unparsed.ty`. (And
+        // if we don't have a new type to update `unparsed.ty` with, we're not dealing with a
+        // generic so we're at the point where we can convert to a `NativeTypeData`.)
         match unparsed.ty {
-            Type::Array(ty) => Self::from(UnparsedNativeTypeData {
-                ty: *ty.elem,
-                option: unparsed.option,
-                vec: true,
-                result: unparsed.result,
-            }),
+            Type::Array(ty) => {
+                unparsed.ty = *ty.elem;
+                unparsed.is_collection = true;
+                Self::from(unparsed)
+            }
             Type::Path(ty) => {
                 let segment = ty.path.segments.last().unwrap();
                 let ident = segment.ident.clone();
-                if ident == format_ident!("Option") {
-                    if let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments {
-                        if let syn::GenericArgument::Type(arg) = arguments.args.first().unwrap() {
-                            Self::from(UnparsedNativeTypeData {
-                                ty: arg.clone(),
-                                option: true,
-                                vec: unparsed.vec,
-                                result: unparsed.result,
-                            })
-                        } else {
-                            panic!("Unexpected arguments for Option: {:?}", arguments);
+                if let Ok(generic) = SupportedGeneric::try_from(&*ident.to_string()) {
+                    match generic {
+                        SupportedGeneric::Option => {
+                            unparsed.is_option = true;
                         }
-                    } else {
-                        panic!("Unexpected segment contents for Option: {:?}", segment);
-                    }
-                } else if ident == format_ident!("Result") {
-                    if let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments {
-                        // Take the first generic argument, which is the success type.
-                        if let syn::GenericArgument::Type(arg) = arguments.args.first().unwrap() {
-                            Self::from(UnparsedNativeTypeData {
-                                ty: arg.clone(),
-                                option: unparsed.option,
-                                vec: unparsed.vec,
-                                result: true,
-                            })
-                        } else {
-                            panic!("Unexpected arguments for Result: {:?}", arguments);
+                        SupportedGeneric::Vec => unparsed.is_collection = true,
+                        SupportedGeneric::Result => unparsed.is_result = true,
+                    };
+                    // Dig the argument type out of the generics for the limited cases we're
+                    // supporting right now and update `unparsed` with its element type.
+                    let arguments = match &segment.arguments {
+                        syn::PathArguments::AngleBracketed(arguments) => arguments,
+                        syn::PathArguments::Parenthesized(_) | syn::PathArguments::None => {
+                            panic!("`None` and `Parenthesized` path arguments are not currently supported.")
                         }
-                    } else {
-                        panic!("Unexpected segment contents for Result: {:?}", segment);
-                    }
-                } else if ident == format_ident!("Vec") {
-                    if let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments {
-                        if let syn::GenericArgument::Type(arg) = arguments.args.first().unwrap() {
-                            Self::from(UnparsedNativeTypeData {
-                                ty: arg.clone(),
-                                option: unparsed.option,
-                                vec: true,
-                                result: unparsed.result,
-                            })
-                        } else {
-                            panic!("Unexpected arguments for Vec: {:?}", arguments);
+                    };
+                    let arg = match arguments.args.first().unwrap() {
+                        syn::GenericArgument::Type(ty) => ty,
+                        syn::GenericArgument::Binding(_)
+                        | syn::GenericArgument::Lifetime(_)
+                        | syn::GenericArgument::Constraint(_)
+                        | syn::GenericArgument::Const(_) => {
+                            panic!("`Lifetime`, `Binding`, `Constraint`, and `Const` generic arguments are not currently supported.")
                         }
-                    } else {
-                        panic!("Unexpected segment contents for Vec: {:?}", segment);
-                    }
+                    };
+                    unparsed.ty = arg.clone();
+                    Self::from(unparsed)
                 } else {
                     let native_type = NativeType::from(ident);
                     NativeTypeData {
                         native_type,
-                        option: unparsed.option,
-                        vec: unparsed.vec,
-                        result: unparsed.result,
+                        option: unparsed.is_option,
+                        vec: unparsed.is_collection,
+                        result: unparsed.is_result,
                     }
                 }
             }
-            Type::Ptr(ty) => Self::from(UnparsedNativeTypeData {
-                ty: *ty.elem,
-                option: unparsed.option,
-                vec: unparsed.vec,
-                result: unparsed.result,
-            }),
-            Type::Reference(ty) => Self::from(UnparsedNativeTypeData {
-                ty: *ty.elem,
-                option: unparsed.option,
-                vec: unparsed.vec,
-                result: unparsed.result,
-            }),
-            Type::Slice(ty) => Self::from(UnparsedNativeTypeData {
-                ty: *ty.elem,
-                option: unparsed.option,
-                vec: true,
-                result: unparsed.result,
-            }),
+            Type::Ptr(ty) => {
+                unparsed.ty = *ty.elem;
+                Self::from(unparsed)
+            }
+            Type::Reference(ty) => {
+                unparsed.ty = *ty.elem;
+                Self::from(unparsed)
+            }
+            Type::Slice(ty) => {
+                unparsed.ty = *ty.elem;
+                unparsed.is_collection = true;
+                Self::from(unparsed)
+            }
             Type::TraitObject(_)
             | Type::Tuple(_)
             | Type::BareFn(_)

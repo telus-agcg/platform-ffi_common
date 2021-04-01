@@ -3,10 +3,10 @@
 //! consumer implementations.
 //!
 
-use crate::native_type_data::{Context, NativeTypeData};
+use crate::native_type_data::{Context, NativeTypeData, UnparsedNativeTypeData};
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{Ident, Type};
+use syn::{Ident, ImplItemMethod, PatType, Type};
 
 /// A representation of a Rust fn that can be used to generate an FFI and consumer code for
 /// calling that FFI.
@@ -28,6 +28,36 @@ pub struct FnFFI {
 
     /// The return type for this function, if any.
     pub return_type: Option<NativeTypeData>,
+}
+
+impl From<&ImplItemMethod> for FnFFI {
+    fn from(method: &ImplItemMethod) -> Self {
+        let fn_name = method.sig.ident.clone();
+        let (arguments, has_receiver) = method.sig.inputs.iter().fold(
+            (Vec::<FnParameterFFI>::new(), false),
+            |mut acc, input| {
+                match input {
+                    syn::FnArg::Receiver(_receiver) => acc.1 = true,
+                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from(arg)),
+                }
+                acc
+            },
+        );
+
+        let return_type: Option<NativeTypeData> = match &method.sig.output {
+            syn::ReturnType::Default => None,
+            syn::ReturnType::Type(_token, ty) => Some(NativeTypeData::from(
+                UnparsedNativeTypeData::initial(*ty.clone()),
+            )),
+        };
+
+        Self {
+            fn_name,
+            has_receiver,
+            parameters: arguments,
+            return_type,
+        }
+    }
 }
 
 impl FnFFI {
@@ -69,33 +99,33 @@ impl FnFFI {
         } else {
             (quote!(), quote!())
         };
-        let (signature_args, calling_args, parameter_conversions) =
-            self.parameters
-                .iter()
-                .fold((receiver_arg, quote!(), receiver_conversion), |mut acc, arg| {
-                    let name = arg.name.clone();
-                    let ty = arg.native_type_data.ffi_type(None, &Context::Argument);
-                    let signature_parameter = quote!(#name: #ty, );
-                    // TODO: This assumes a collection type should always be dereferenced to a slice
-                    // and borrowed when passed to the native function, which is not necessarily the
-                    // case. We should be able to figure that out from the syn collection types...we
-                    // just need to support them more completely instead of stripping down to "is a
-                    // collection".
-                    let symbols = if arg.native_type_data.vec {
-                        quote!(&*)
-                    } else {
-                        quote!()
-                    };
-                    let calling_arg = quote!(#symbols#name, );
+        let (signature_args, calling_args, parameter_conversions) = self.parameters.iter().fold(
+            (receiver_arg, quote!(), receiver_conversion),
+            |mut acc, arg| {
+                let name = arg.name.clone();
+                let ty = arg.native_type_data.ffi_type(None, &Context::Argument);
+                let signature_parameter = quote!(#name: #ty, );
+                // TODO: This assumes a collection type should always be dereferenced to a slice
+                // and borrowed when passed to the native function, which is not necessarily the
+                // case. We should be able to figure that out from the syn collection types...we
+                // just need to support them more completely instead of stripping down to "is a
+                // collection".
+                let symbols = if arg.native_type_data.vec {
+                    quote!(&*)
+                } else {
+                    quote!()
+                };
+                let calling_arg = quote!(#symbols#name, );
 
-                    let native_type = arg.native_type_data.owned_native_type();
-                    let conversion = arg.native_type_data.argument_into_rust(&name, false);
-                    let assignment_and_conversion = quote!(let #name: #native_type = #conversion;);
-                    acc.0.extend(signature_parameter);
-                    acc.1.extend(calling_arg);
-                    acc.2.extend(assignment_and_conversion);
-                    acc
-                });
+                let native_type = arg.native_type_data.owned_native_type();
+                let conversion = arg.native_type_data.argument_into_rust(&name, false);
+                let assignment_and_conversion = quote!(let #name: #native_type = #conversion;);
+                acc.0.extend(signature_parameter);
+                acc.1.extend(calling_arg);
+                acc.2.extend(assignment_and_conversion);
+                acc
+            },
+        );
 
         let fn_name = self.fn_name.clone();
         let native_call = if self.has_receiver {
@@ -127,13 +157,12 @@ impl FnFFI {
         } else {
             quote!(#native_call(#calling_args);)
         };
-        let ffi_fn = quote! {
+        quote! {
             pub unsafe extern "C" fn #fn_name(#signature_args) -> #return_type {
                 #parameter_conversions
                 #call_and_return
             }
-        };
-        ffi_fn
+        }
     }
 
     /// Generates a consumer function for calling the foreign function produced by
@@ -209,4 +238,21 @@ pub struct FnParameterFFI {
     /// The original type of the fn parameter.
     ///
     pub original_type: Type,
+}
+
+impl From<&PatType> for FnParameterFFI {
+    fn from(arg: &PatType) -> Self {
+        let name = if let syn::Pat::Ident(pat) = &*arg.pat {
+            pat.ident.clone()
+        } else {
+            panic!("Anonymous parameter (not allowed in Rust 2018): {:?}", arg);
+        };
+        let native_type_data =
+            NativeTypeData::from(UnparsedNativeTypeData::initial(*arg.ty.clone()));
+        Self {
+            name,
+            native_type_data,
+            original_type: *arg.ty.clone(),
+        }
+    }
 }

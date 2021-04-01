@@ -201,9 +201,9 @@ impl FieldFFI {
     #[must_use]
     pub fn assignment_expression(&self) -> TokenStream {
         let field_name = &self.field_name;
-        let conversion = self.native_type_data.argument_into_rust(
-            &self.field_name,
-            self.attributes.expose_as.is_some());
+        let conversion = self
+            .native_type_data
+            .argument_into_rust(&self.field_name, self.attributes.expose_as.is_some());
         quote!(#field_name: #conversion,)
     }
 }

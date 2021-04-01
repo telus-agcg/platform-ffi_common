@@ -3,8 +3,7 @@
 //! and consumer implementations.
 //!
 
-use super::fn_ffi::{FnFFI, FnParameterFFI};
-use crate::native_type_data::{NativeTypeData, UnparsedNativeTypeData};
+use super::fn_ffi::FnFFI;
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -45,48 +44,7 @@ impl From<ImplInputs> for ImplFFI {
             .iter()
             .filter_map(|item| {
                 if let syn::ImplItem::Method(method) = item {
-                    let fn_name = method.sig.ident.clone();
-                    let (arguments, has_receiver) = method.sig.inputs.iter().fold(
-                        (Vec::<FnParameterFFI>::new(), false),
-                        |mut acc, input| {
-                            match input {
-                                syn::FnArg::Receiver(_receiver) => acc.1 = true,
-                                syn::FnArg::Typed(arg) => {
-                                    let argument_name = if let syn::Pat::Ident(pat) = &*arg.pat {
-                                        pat.ident.clone()
-                                    } else {
-                                        panic!(
-                                            "Anonymous parameter (not allowed in Rust 2018): {:?}",
-                                            input
-                                        );
-                                    };
-                                    let native_type_data = NativeTypeData::from(
-                                        UnparsedNativeTypeData::initial(*arg.ty.clone()),
-                                    );
-                                    acc.0.push(FnParameterFFI {
-                                        name: argument_name,
-                                        native_type_data,
-                                        original_type: *arg.ty.clone(),
-                                    })
-                                }
-                            }
-                            acc
-                        },
-                    );
-
-                    let return_type: Option<NativeTypeData> = match &method.sig.output {
-                        syn::ReturnType::Default => None,
-                        syn::ReturnType::Type(_token, ty) => Some(NativeTypeData::from(
-                            UnparsedNativeTypeData::initial(*ty.clone()),
-                        )),
-                    };
-
-                    Some(FnFFI {
-                        fn_name,
-                        has_receiver,
-                        parameters: arguments,
-                        return_type,
-                    })
+                    Some(FnFFI::from(method))
                 } else {
                     None
                 }
@@ -188,7 +146,7 @@ impl ImplFFI {
     pub fn generate_ffi(&self) -> TokenStream {
         let mod_name = self.module_name();
         let imports = self.import_paths.iter().fold(quote!(), |mut stream, path| {
-            stream.extend(quote!(use #path::*;));
+            stream.extend(quote!(use #path;));
             stream
         });
         let fns = self.fns.iter().fold(quote!(), |mut stream, f| {

@@ -148,10 +148,11 @@ fn parse_ffi_meta(attr: &Attribute) -> Result<Vec<NestedMeta>, ()> {
 
 pub fn parse_fn_attributes(args: &[NestedMeta]) -> Vec<Path> {
     args.iter()
+        .cloned()
         .filter_map(|arg| {
-            if let NestedMeta::Lit(meta) = arg {
-                if let Lit::Str(lit) = meta {
-                    return syn::parse_str(&lit.value()).ok();
+            if let NestedMeta::Meta(meta) = arg {
+                if let Meta::Path(path) = meta {
+                    return Some(path);
                 }
             }
             None

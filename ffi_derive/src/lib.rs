@@ -210,7 +210,7 @@
 //! name + type name to generate a unique module name as a container for the FFI functions).
 //! Inherent implementations (like `impl Foo { ... }`) won't work (yet).
 //! 1. The invocation site needs to provide the paths to the FFI modules that we'll need to import.
-//! For example, the FFI form of a function like 
+//! For example, the FFI form of a function like
 //! `fn meow(&self, volume: Option<Volume>) -> Vec<Meow> { ... }` will need to know the paths to the
 //! FFI types of `Meow` and `Volume`. Fortunately, since those FFI types probably come from
 //! `ffi_derive`, it's easy to figure out what they would be based on your normal imports. If you do
@@ -222,19 +222,19 @@
 //! ```ignore
 //! use crate::animals::cats::Meow;
 //! use utilities::sound::Volume;
-//! #[derive(ffi_derive::expose_items(
-//!     "crate::animals::cats::meow_ffi",
-//!     "utilities::sound::volume_ffi"
-//! ))]
+//! #[ffi_derive::expose_items(animals::cats::meow_ffi::FFIArrayMeow)]
 //! impl Meows for Cat {
-//!     pub fn meow(&self, volume: Option<Volume>) -> Vec<Meow> { ... }
+//!     pub fn meow(&self, volume: Option<Volume>, count: u8) -> Vec<Meow> { ... }
 //! }
 //! ```
 //! and generates a module like this:
 //! ```ignore
-//! pub mod some_trait_some_type_ffi {
-//!     pub extern "C" fn meow(cat: *const Cat, volume: *const Meow) -> FFIArrayMeow { ... }
-//! }
+//! pub mod meows_cat_ffi {
+//!     pub unsafe extern "C" fn meow(
+//!         cat: *const Cat,
+//!         volume: *mut Volume,
+//!         count: u8
+//!     ) -> FFIArrayMeow { ... }
 //! ```
 //!
 
