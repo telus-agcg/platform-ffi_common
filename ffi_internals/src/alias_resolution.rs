@@ -40,7 +40,7 @@ lazy_static! {
 struct AliasDefinition {
     /// The type that a newtype is defined as. In `type Foo = u16`, this is `u16`.
     definition: String,
-    /// Set if `definition` is itself an alias, so that we can look at the outer keys again.
+    /// `Some` if `definition` is itself an alias, so that we can look at the outer keys again.
     definition_source: Option<String>,
 }
 
@@ -48,11 +48,10 @@ struct AliasDefinition {
 /// underlying types when deriving the FFI.
 ///
 pub fn parse_alias_module(resolution_key: String, module: ItemMod) -> ItemMod {
-
     #[derive(Default)]
     struct ModuleOutput {
         stripped_items: Vec<Item>,
-        new_aliases: HashMap<String, AliasDefinition>
+        new_aliases: HashMap<String, AliasDefinition>,
     }
 
     // Parse the alias resolution data out of `module`.
@@ -60,9 +59,8 @@ pub fn parse_alias_module(resolution_key: String, module: ItemMod) -> ItemMod {
         .clone()
         .content
         .unwrap_or_else(|| panic!("No module content? {:?}", module));
-    let module_output: ModuleOutput = items
-        .iter()
-        .fold(ModuleOutput::default(), |mut acc, item| {
+    let module_output: ModuleOutput =
+        items.iter().fold(ModuleOutput::default(), |mut acc, item| {
             if let Item::Type(item_type) = item {
                 let definition_source = item_type.attrs.iter().find_map(parse_nested_alias_meta);
                 let stripped_attrs: Vec<Attribute> = item_type
@@ -121,12 +119,12 @@ pub fn parse_alias_module(resolution_key: String, module: ItemMod) -> ItemMod {
     }
 }
 
-/// If `field_type` is an alias in `alias_map`, returns the underlying type (resolving aliases
+/// If `type_name` is an alias in `alias_map`, returns the underlying type (resolving aliases
 /// recursively, so if someone is weird and defines typealiases over other typealiases, we'll still
 /// find the underlying type, as long as they were all specified in the `alias_paths` helper
 /// attribute).
 ///
-pub(super) fn resolve_type_alias(field_type: &Ident, relevant_modules: &[String]) -> Ident {
+pub(super) fn resolve_type_alias(type_name: &Ident, relevant_modules: &[String]) -> Ident {
     let alias_map_path = ALIAS_MAP_PATH.lock().unwrap();
     let aliases: HashMap<String, HashMap<String, AliasDefinition>> =
         match std::fs::File::open(&*alias_map_path) {
@@ -138,7 +136,7 @@ pub(super) fn resolve_type_alias(field_type: &Ident, relevant_modules: &[String]
                 }
             }
             Err(_) => {
-                return field_type.clone();
+                return type_name.clone();
             }
         };
 
@@ -156,7 +154,7 @@ pub(super) fn resolve_type_alias(field_type: &Ident, relevant_modules: &[String]
 
     let maybe_alias = relevant_modules
         .iter()
-        .find_map(|m| aliases_as_idents.get(m).and_then(|a| a.get(field_type)));
+        .find_map(|m| aliases_as_idents.get(m).and_then(|a| a.get(type_name)));
 
     match maybe_alias {
         Some(alias) => {
@@ -171,7 +169,7 @@ pub(super) fn resolve_type_alias(field_type: &Ident, relevant_modules: &[String]
             drop(alias_map_path);
             resolve_type_alias(&field_type, &*modules_to_check)
         }
-        None => field_type.clone(),
+        None => type_name.clone(),
     }
 }
 
@@ -207,7 +205,7 @@ fn update_alias_map(resolution_key: String, new_aliases: HashMap<String, AliasDe
         .create(true)
         .open(&*alias_map_path)
         .unwrap_or_else(|e| panic!("Error opening file to write {}: {}", alias_map_path, e));
-    
+
     serde_json::to_writer(file, &map)
         .unwrap_or_else(|e| println!("Error writing file {}: {}", alias_map_path, e));
 }

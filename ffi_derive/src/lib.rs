@@ -200,6 +200,43 @@
 //! `pub field foo: crate1::aliases::Foo`), we won't be able to figure out how to go from that
 //! definition to `Foo` to `u8`.
 //!
+//! ## Deriving on an impl
+//!
+//! We also support generating an FFI for trait implementations with the `expose_items` attribute
+//! macro.
+//!
+//! Couple of limitations here:
+//! 1. As mentioned above, we currently only support trait implementations (because we use the trait
+//! name + type name to generate a unique module name as a container for the FFI functions).
+//! Inherent implementations (like `impl Foo { ... }`) won't work (yet).
+//! 1. The invocation site needs to provide the paths to the FFI modules that we'll need to import.
+//! For example, the FFI form of a function like
+//! `fn meow(&self, volume: Option<Volume>) -> Vec<Meow> { ... }` will need to know the paths to the
+//! FFI types of `Meow` and `Volume`. Fortunately, since those FFI types probably come from
+//! `ffi_derive`, it's easy to figure out what they would be based on your normal imports. If you do
+//! something like `use crate::animals::cats::Meow;` and `use utilities::sound::Volume;`, you'll
+//! just need to provide `"crate::animals::cats::meow_ffi", "utilities::sound::volume_ffi"` to the
+//! attribute macro.
+//!
+//! Invoking the `expose_items` macro looks like this:
+//! ```ignore
+//! use crate::animals::cats::Meow;
+//! use utilities::sound::Volume;
+//! #[ffi_derive::expose_items(animals::cats::meow_ffi::FFIArrayMeow)]
+//! impl Meows for Cat {
+//!     pub fn meow(&self, volume: Option<Volume>, count: u8) -> Vec<Meow> { ... }
+//! }
+//! ```
+//! and generates a module like this:
+//! ```ignore
+//! pub mod meows_cat_ffi {
+//!     pub unsafe extern "C" fn meow(
+//!         cat: *const Cat,
+//!         volume: *mut Volume,
+//!         count: u8
+//!     ) -> FFIArrayMeow { ... }
+//! ```
+//!
 
 #![warn(
     future_incompatible,
@@ -224,11 +261,15 @@
 mod enum_ffi;
 mod struct_ffi;
 
-use ffi_internals::{alias_resolution, parsing};
+use ffi_internals::{
+    alias_resolution,
+    impl_internals::impl_ffi::{ImplFFI, ImplInputs},
+    parsing,
+};
 use heck::SnakeCase;
 use proc_macro::TokenStream;
 use quote::{format_ident, ToTokens};
-use syn::{Data, DeriveInput};
+use syn::{parse_macro_input, Data, DeriveInput, ItemMod};
 
 /// Derive an FFI for a native type definition.
 ///
@@ -286,9 +327,46 @@ fn impl_ffi_macro(ast: DeriveInput) -> TokenStream {
 #[proc_macro_attribute]
 pub fn alias_resolution(attr: TokenStream, item: TokenStream) -> TokenStream {
     let resolution_key = attr.to_string();
-    let module: syn::ItemMod = syn::parse(item.clone())
-        .unwrap_or_else(|e| panic!("Not a module: {:?}. Error: {:?}", item, e));
+    let module = parse_macro_input!(item as ItemMod);
     alias_resolution::parse_alias_module(resolution_key, module)
         .into_token_stream()
         .into()
+}
+
+/// Parses an impl and produces a module exposing that impl's functions over FFI.
+///
+#[proc_macro_attribute]
+pub fn expose_items(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = syn::parse_macro_input!(attr as syn::AttributeArgs);
+    let import_paths = parsing::parse_fn_attributes(&*args);
+    let item_impl = syn::parse_macro_input!(item as syn::ItemImpl);
+
+    let trait_name = item_impl.trait_.as_ref().map_or_else(
+        || panic!("No trait info found"),
+        |t| t.1.segments.last().unwrap().ident.clone(),
+    );
+    let type_name = if let syn::Type::Path(ty) = &*item_impl.self_ty {
+        ty.path.segments.last().unwrap().ident.clone()
+    } else {
+        panic!("Could not find self type for impl: {:?}", item_impl);
+    };
+
+    let impl_ffi = ImplFFI::from(ImplInputs {
+        items: item_impl.items.clone(),
+        import_paths,
+        trait_name,
+        type_name,
+    });
+    let out_dir = option_env!("FFI_CONSUMER_ROOT_DIR").unwrap_or_else(|| env!("OUT_DIR"));
+    let file_name = impl_ffi.consumer_file_name();
+    ffi_internals::write_consumer_file(&file_name, impl_ffi.generate_consumer(), out_dir);
+    let ffi = impl_ffi.generate_ffi();
+
+    let output = quote::quote! {
+        #item_impl
+
+        #ffi
+    };
+
+    output.into()
 }

@@ -5,7 +5,7 @@
 use ffi_consumer::consumer_struct::ConsumerStruct;
 use ffi_internals::{
     parsing,
-    struct_ffi::{StructFFI, StructInputs},
+    struct_internals::struct_ffi::{StructFFI, StructInputs},
 };
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
@@ -33,7 +33,8 @@ pub(super) fn custom(
         clone_fn_name.to_string(),
     );
 
-    ffi_internals::write_consumer_files(type_name, consumer.into(), out_dir);
+    let file_name = format!("{}.swift", type_name.to_string());
+    ffi_internals::write_consumer_file(&file_name, consumer.into(), out_dir);
 
     quote::quote!(
         #[allow(box_pointers, missing_docs)]
@@ -68,9 +69,9 @@ pub(super) fn standard(
         alias_modules,
     })
     .expect("Unsupported struct data");
-
-    ffi_internals::write_consumer_files(
-        type_name,
+    let file_name = format!("{}.swift", type_name.to_string());
+    ffi_internals::write_consumer_file(
+        &file_name,
         ConsumerStruct::from(&struct_ffi).into(),
         out_dir,
     );

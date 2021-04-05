@@ -4,8 +4,11 @@
 //! native getters for reading properties from the Rust struct.
 //!
 
-use ffi_internals::{field_ffi::FieldFFI, native_type_data, struct_ffi::StructFFI};
-use heck::{CamelCase, MixedCase, SnakeCase};
+use ffi_internals::{
+    native_type_data,
+    struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
+};
+use heck::{MixedCase, SnakeCase};
 
 /// Contains the data required to generate a consumer type, and associated functions for doing so.
 ///
@@ -36,7 +39,7 @@ pub struct ConsumerStruct {
 
 impl ConsumerStruct {
     fn array_name(&self) -> String {
-        format!("FFIArray{}", self.type_name.to_camel_case())
+        format!("FFIArray{}", self.type_name)
     }
 
     fn array_init(&self) -> String {
