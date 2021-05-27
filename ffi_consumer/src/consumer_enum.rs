@@ -2,8 +2,6 @@
 //! Generates boilerplate code for using a repr(C) enum in the consumer's language.
 //!
 
-use heck::SnakeCase;
-
 /// Contains the data required generate consumer support for a repr(C) enum.
 ///
 pub struct ConsumerEnum {
@@ -17,32 +15,32 @@ impl ConsumerEnum {
     }
 
     fn array_init(&self) -> String {
-        format!("ffi_array_{}_init", self.type_name.to_snake_case())
+        format!("ffi_array_{}_init", self.type_name)
     }
 
     fn array_free(&self) -> String {
-        format!("ffi_array_{}_free", self.type_name.to_snake_case())
+        format!("ffi_array_{}_free", self.type_name)
     }
 
     fn option_init(&self) -> String {
-        format!("option_{}_init", self.type_name.to_snake_case())
+        format!("option_{}_init", self.type_name)
     }
 
     fn option_free(&self) -> String {
-        format!("option_{}_free", self.type_name.to_snake_case())
+        format!("option_{}_free", self.type_name)
     }
 
     fn array_conformance(&self) -> String {
         format!(
             r#"
 extension {}: FFIArray {{
-    typealias Value = {}
+    public typealias Value = {}
 
-    static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
+    public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
         {}(ptr, len)
     }}
 
-    static func free(_ array: Self) {{
+    public static func free(_ array: Self) {{
         {}(array)
     }}
 }}
@@ -57,7 +55,7 @@ extension {}: FFIArray {{
     fn option_conformance(&self) -> String {
         format!(
             r#"
-extension Optional where Wrapped == {} {{
+public extension Optional where Wrapped == {} {{
     func toRust() -> UnsafeMutablePointer<{}>? {{
         switch self {{
         case let .some(value):
@@ -97,19 +95,23 @@ extension Optional where Wrapped == {} {{
     fn native_data_impl(&self) -> String {
         format!(
             r#"
-extension {}: NativeData {{
-    typealias ForeignType = {}
+{}
 
-    func toRust() -> ForeignType {{
+extension {}: NativeData {{
+    public typealias ForeignType = {}
+
+    public func toRust() -> ForeignType {{
         return self
     }}
 
-    static func fromRust(_ foreignObject: ForeignType) -> Self {{
+    public static func fromRust(_ foreignObject: ForeignType) -> Self {{
         return foreignObject
     }}
 }}
 "#,
-            self.type_name, self.type_name
+            option_env!("FFI_COMMON_FRAMEWORK").map(|f| format!("import {}", f)).unwrap_or_default(),
+            self.type_name, 
+            self.type_name
         )
     }
 
@@ -119,7 +121,7 @@ extension {}: NativeData {{
         format!(
             r#"
 extension {}: NativeArrayData {{
-    typealias FFIArrayType = {}
+    public typealias FFIArrayType = {}
 }}
 "#,
             self.type_name,

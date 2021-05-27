@@ -62,7 +62,7 @@ fn test_struct_ffi() {
         );
         let ffi_string_array = FFIArrayString::from(&*input_string_vec);
         let ffi_uuid_array = FFIArrayString::from(&*input_uuid_vec);
-        let ffi_variant_array = test_enum_ffi::ffi_array_test_enum_init(
+        let ffi_variant_array = test_enum_ffi::ffi_array_TestEnum_init(
             input_variant_vec.as_ptr(),
             input_variant_vec.len().try_into().unwrap(),
         );
@@ -78,7 +78,7 @@ fn test_struct_ffi() {
             ffi_uuid_array,
             ffi_variant_array,
             ffi_date_array,
-            ffi_array_test_struct_init(std::ptr::null(), 0),
+            ffi_array_TestStruct_init(std::ptr::null(), 0),
         );
 
         // Read and check every field.

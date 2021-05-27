@@ -1,13 +1,13 @@
 import Foundation
 
 // MARK: - FFI Protocols
-protocol FFIData {
+public protocol FFIData {
     associatedtype Value
 }
 
 /// Describes the structure of all `FFIArray*` types, relying on `Value` for the size of their
 /// pointer. `FFIArray*` types need to implement this.
-protocol FFIArray: FFIData {
+public protocol FFIArray: FFIData {
     var ptr: UnsafePointer<Value>! { get }
     var len: UInt { get }
     var cap: UInt { get }
@@ -18,7 +18,7 @@ protocol FFIArray: FFIData {
 }
 
 // MARK: - Native protocols
-protocol NativeData {
+public protocol NativeData {
     associatedtype ForeignType
 
     // Base type
@@ -26,11 +26,11 @@ protocol NativeData {
     static func fromRust(_ foreignObject: ForeignType) -> Self
 }
 
-protocol NativeArrayData: NativeData {
+public protocol NativeArrayData: NativeData {
     associatedtype FFIArrayType: FFIArray
 }
 
-extension NativeArrayData where FFIArrayType.Value == ForeignType {
+public extension NativeArrayData where FFIArrayType.Value == ForeignType {
     static func ffiArrayInit<T: Collection>(_ collection: T) -> FFIArrayType where T.Element == Self {
         let ffiArray = collection.map { $0.toRust() }
         let len = ffiArray.count
@@ -45,7 +45,7 @@ extension NativeArrayData where FFIArrayType.Value == ForeignType {
 /// This lets us do `[NativeFoo]?.fromRust(instanceOfFFIArrayFooThatMightBeNil)` and 
 /// `[instanceOfNativeFooThatMightBeNil]?.toRust()` whenever `NativeFoo` is `FFIArray` and
 /// `FFIArrayFoo` is `FFIArray` (both of which are trivial to generate for pretty much any type).
-extension Optional where
+public extension Optional where
     Wrapped: Collection,
     Wrapped.Element: NativeArrayData,
     Wrapped.Element.FFIArrayType.Value == Wrapped.Element.ForeignType
@@ -68,7 +68,7 @@ extension Optional where
 /// This lets us do `[NativeFoo].fromRust(instanceOfFFIArrayFoo)` and 
 /// `[instanceOfNativeFoo].toRust()` whenever `NativeFoo` is `FFIArray` and `FFIArrayFoo` is
 /// `FFIArray` (both of which are trivial to generate for pretty much any type).
-extension Collection where Element: NativeArrayData, Element.FFIArrayType.Value == Element.ForeignType {
+public extension Collection where Element: NativeArrayData, Element.FFIArrayType.Value == Element.ForeignType {
     func toRust() -> Element.FFIArrayType {
         Element.ffiArrayInit(self)
     }

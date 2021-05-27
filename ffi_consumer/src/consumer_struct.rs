@@ -8,7 +8,8 @@ use ffi_internals::{
     native_type_data,
     struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
 };
-use heck::{MixedCase, SnakeCase};
+use heck::{CamelCase, MixedCase};
+use syn::Path;
 
 /// Contains the data required to generate a consumer type, and associated functions for doing so.
 ///
@@ -16,6 +17,9 @@ pub struct ConsumerStruct {
     /// The name of the type name.
     ///
     pub type_name: String,
+    /// Additional imports that this type requires.
+    ///
+    required_imports: Vec<Path>,
     /// The arguments for the consumer type's initializer.
     ///
     consumer_init_args: String,
@@ -43,21 +47,32 @@ impl ConsumerStruct {
     }
 
     fn array_init(&self) -> String {
-        format!("ffi_array_{}_init", self.type_name.to_snake_case())
+        format!("ffi_array_{}_init", self.type_name)
     }
 
     fn array_free(&self) -> String {
-        format!("ffi_array_{}_free", self.type_name.to_snake_case())
+        format!("ffi_array_{}_free", self.type_name)
     }
 
     /// Generates a wrapper for a struct so that the native interface in the consumer's language
     /// correctly wraps the generated FFI module.
     ///
     fn type_definition(&self) -> String {
+        let additional_imports: Vec<String> = self.required_imports
+            .iter()
+            .map(|path| {
+                let crate_name = path.segments.first().unwrap().ident.to_string().to_camel_case();
+                let type_name = path.segments.last().unwrap().ident.to_string().to_camel_case();
+                format!("import class {}.{}", crate_name, type_name)
+            })
+            .collect();
         format!(
             r#"
+{common_framework}
+{additional_imports}
+
 public final class {class} {{
-    private let pointer: OpaquePointer
+    internal let pointer: OpaquePointer
 
     public init(
 {args}
@@ -77,6 +92,8 @@ public final class {class} {{
 {getters}
 }}
 "#,
+            common_framework = option_env!("FFI_COMMON_FRAMEWORK").map(|f| format!("import {}", f)).unwrap_or_default(),
+            additional_imports = additional_imports.join("\n"),
             class = self.type_name,
             args = self.consumer_init_args,
             ffi_init = self.init_fn_name,
@@ -90,13 +107,13 @@ public final class {class} {{
         format!(
             r#"
 extension {array_name}: FFIArray {{
-    typealias Value = OpaquePointer?
+    public typealias Value = OpaquePointer?
 
-    static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
+    public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
         {array_init}(ptr, len)
     }}
 
-    static func free(_ array: Self) {{
+    public static func free(_ array: Self) {{
         {array_free}(array)
     }}
 }}
@@ -111,17 +128,17 @@ extension {array_name}: FFIArray {{
         format!(
             r#"
 extension {}: NativeData {{
-    typealias ForeignType = OpaquePointer?
+    public typealias ForeignType = OpaquePointer?
 
     /// `toRust()` will clone this instance (in Rust) and return a pointer to it that can be used
     /// when calling a Rust function that takes ownership of an instance (like an initializer with a
     /// parameter of this type).
-    internal func toRust() -> ForeignType {{
+    public func toRust() -> ForeignType {{
         return {}(pointer)
     }}
 
     /// Initializes an instance of this type from a pointer to an instance of the Rust type.
-    internal static func fromRust(_ foreignObject: ForeignType) -> Self {{
+    public static func fromRust(_ foreignObject: ForeignType) -> Self {{
         return Self(foreignObject!)
     }}
 }}
@@ -133,7 +150,7 @@ extension {}: NativeData {{
     fn option_impl(&self) -> String {
         format!(
             r#"
-extension Optional where Wrapped == {} {{
+public extension Optional where Wrapped == {} {{
     func toRust() -> OpaquePointer? {{
         switch self {{
         case let .some(value):
@@ -159,7 +176,7 @@ extension Optional where Wrapped == {} {{
         format!(
             r#"
 extension {}: NativeArrayData {{
-    typealias FFIArrayType = {}
+    public typealias FFIArrayType = {}
 }}
 "#,
             self.type_name,
@@ -174,6 +191,7 @@ impl ConsumerStruct {
     #[must_use]
     pub fn custom(
         type_name: String,
+        required_imports: Vec<Path>,
         init_fn_name: String,
         init_args: &[(syn::Ident, syn::Type)],
         getters: &[(syn::Ident, syn::Type)],
@@ -205,7 +223,7 @@ impl ConsumerStruct {
             },
         );
 
-        let type_prefix = format!("get_{}_", type_name.to_snake_case());
+        let type_prefix = format!("get_{}_", type_name);
         let consumer_getters = getters.iter().fold(String::new(), |mut acc, (i, t)| {
             let consumer_type =
                 native_type_data::native_type_data_for_custom(t).consumer_type(None);
@@ -216,6 +234,7 @@ impl ConsumerStruct {
                 .unwrap()
                 .to_string()
                 .to_mixed_case();
+            
             acc.push_str(&format!(
                 "
     public var {}: {} {{
@@ -232,6 +251,7 @@ impl ConsumerStruct {
 
         Self {
             type_name,
+            required_imports,
             consumer_init_args,
             ffi_init_args,
             consumer_getters,
@@ -248,6 +268,7 @@ impl From<&StructFFI> for ConsumerStruct {
             expand_fields(&*struct_ffi.fields);
         Self {
             type_name: struct_ffi.name.to_string(),
+            required_imports: struct_ffi.required_imports.clone(),
             consumer_init_args,
             ffi_init_args,
             consumer_getters,

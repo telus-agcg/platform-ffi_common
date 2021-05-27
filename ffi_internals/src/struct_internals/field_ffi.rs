@@ -11,41 +11,8 @@ use crate::{
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Field, Ident, Path};
-
-/// Field-level FFI helper attributes.
-///
-#[derive(Debug, Clone)]
-pub struct FieldAttributes {
-    /// If `Some`, a path to the type that this field should be exposed as. This type must meet
-    /// some prerequisites:
-    /// 1. It must be FFI-safe (either because it's a primitive value or derives its own FFI with
-    /// `ffi_derive`).
-    /// 1. It must have a `From<T> for U` impl, where `T` is the native type of the field and `U` is
-    /// the type referenced by the `expose_as` `Path`.
-    ///
-    /// This is necessary for exposing remote types where we want to derive an FFI, but don't
-    /// control the declaration of the type.
-    ///
-    pub expose_as: Option<Path>,
-
-    /// Whether the field's data should be exposed as a raw value (i.e., not `Box`ed). This should
-    /// only be applied to fields whose type is `repr(C)` and safe to expose over FFI.
-    ///
-    pub raw: bool,
-}
-
-impl FieldAttributes {
-    /// If there's an `expose_as` attribute, get the ident of the last segment in the path (i.e.,
-    /// the ident of the type being referenced).
-    ///
-    pub fn expose_as_ident(&self) -> Option<&Ident> {
-        self.expose_as
-            .as_ref()
-            .map(|p| p.segments.last().map(|s| &s.ident))
-            .flatten()
-    }
-}
+use parsing::FieldAttributes;
+use syn::{Field, Ident};
 
 /// Represents the components of the generated FFI for a field.
 #[derive(Debug)]
@@ -221,7 +188,7 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
                 ))
             })
             .clone();
-        let attributes = parsing::parse_field_attributes(&field.attrs);
+        let attributes = FieldAttributes::from(&*field.attrs);
         let (wrapping_type, unaliased_field_type) = match parsing::get_segment_for_field(&field.ty)
         {
             Some(segment) => {
