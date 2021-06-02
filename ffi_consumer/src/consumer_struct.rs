@@ -58,11 +58,24 @@ impl ConsumerStruct {
     /// correctly wraps the generated FFI module.
     ///
     fn type_definition(&self) -> String {
-        let additional_imports: Vec<String> = self.required_imports
+        let additional_imports: Vec<String> = self
+            .required_imports
             .iter()
             .map(|path| {
-                let crate_name = path.segments.first().unwrap().ident.to_string().to_camel_case();
-                let type_name = path.segments.last().unwrap().ident.to_string().to_camel_case();
+                let crate_name = path
+                    .segments
+                    .first()
+                    .unwrap()
+                    .ident
+                    .to_string()
+                    .to_camel_case();
+                let type_name = path
+                    .segments
+                    .last()
+                    .unwrap()
+                    .ident
+                    .to_string()
+                    .to_camel_case();
                 format!("import class {}.{}", crate_name, type_name)
             })
             .collect();
@@ -92,7 +105,9 @@ public final class {class} {{
 {getters}
 }}
 "#,
-            common_framework = option_env!("FFI_COMMON_FRAMEWORK").map(|f| format!("import {}", f)).unwrap_or_default(),
+            common_framework = option_env!("FFI_COMMON_FRAMEWORK")
+                .map(|f| format!("import {}", f))
+                .unwrap_or_default(),
             additional_imports = additional_imports.join("\n"),
             class = self.type_name,
             args = self.consumer_init_args,
@@ -234,7 +249,7 @@ impl ConsumerStruct {
                 .unwrap()
                 .to_string()
                 .to_mixed_case();
-            
+
             acc.push_str(&format!(
                 "
     public var {}: {} {{
@@ -281,13 +296,15 @@ impl From<&StructFFI> for ConsumerStruct {
 
 impl From<ConsumerStruct> for String {
     fn from(consumer: ConsumerStruct) -> Self {
-        let mut result = crate::header();
-        result.push_str(&consumer.type_definition());
-        result.push_str(&consumer.ffi_array_impl());
-        result.push_str(&consumer.native_data_impl());
-        result.push_str(&consumer.option_impl());
-        result.push_str(&consumer.array_impl());
-        result
+        [
+            crate::HEADER,
+            &consumer.type_definition(),
+            &consumer.ffi_array_impl(),
+            &consumer.native_data_impl(),
+            &consumer.option_impl(),
+            &consumer.array_impl(),
+        ]
+        .join("")
     }
 }
 

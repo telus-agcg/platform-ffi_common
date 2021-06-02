@@ -1,4 +1,4 @@
-use syn::{Attribute, NestedMeta, Meta, Lit, Path};
+use syn::{Attribute, Lit, Meta, NestedMeta, Path};
 
 pub struct StructAttributes {
     pub alias_modules: Vec<String>,
@@ -22,7 +22,8 @@ impl From<&[Attribute]> for StructAttributes {
                     alias_modules.extend(l.nested.iter().flat_map(get_modules_from_meta));
                 }
                 NestedMeta::Meta(Meta::List(l)) if l.path.is_ident("required_imports") => {
-                    required_imports.extend(l.nested.iter().flat_map(super::parse_path_from_nested_meta));
+                    required_imports
+                        .extend(l.nested.iter().flat_map(super::parse_path_from_nested_meta));
                 }
                 other => {
                     panic!("Unsupported ffi attribute type: {:?}", other);
@@ -38,14 +39,9 @@ impl From<&[Attribute]> for StructAttributes {
 }
 
 /// Parses the path from a `NestedMeta`, then converts its segments into a `Vec<String>`.
-/// 
+///
 fn get_modules_from_meta(meta: &NestedMeta) -> Vec<String> {
     super::parse_path_from_nested_meta(meta)
-        .map(|p| {
-            p.segments
-                .iter()
-                .map(|s| s.ident.to_string())
-                .collect()
-        })
+        .map(|p| p.segments.iter().map(|s| s.ident.to_string()).collect())
         .unwrap_or_default()
 }

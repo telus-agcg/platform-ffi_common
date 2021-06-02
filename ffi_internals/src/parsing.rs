@@ -5,8 +5,8 @@
 use std::fs::File;
 use std::io::Read;
 use syn::{
-    Attribute, GenericArgument, Ident, Item, Meta, NestedMeta, Path, PathArguments,
-    PathSegment, Type,
+    Attribute, GenericArgument, Ident, Item, Meta, NestedMeta, Path, PathArguments, PathSegment,
+    Type,
 };
 
 mod field_attributes;
@@ -158,7 +158,7 @@ pub fn parse_custom_ffi_type(
 }
 
 /// Dig the `Meta::Path` out of a `NestedMeta` if present, and return the `Path`.
-/// 
+///
 pub(super) fn parse_path_from_nested_meta(arg: &NestedMeta) -> Option<Path> {
     if let NestedMeta::Meta(meta) = arg {
         if let Meta::Path(path) = meta {

@@ -23,7 +23,8 @@ pub(super) fn custom(
     let init_fn_name = format_ident!("{}_init", &type_name.to_string().to_snake_case());
     let free_fn_name = format_ident!("{}_free", &type_name.to_string().to_snake_case());
     let clone_fn_name = format_ident!("clone_{}", &type_name.to_string().to_snake_case());
-    let custom_ffi = parsing::parse_custom_ffi_type(custom_path, &type_name.to_string(), &init_fn_name);
+    let custom_ffi =
+        parsing::parse_custom_ffi_type(custom_path, &type_name.to_string(), &init_fn_name);
 
     let consumer = ConsumerStruct::custom(
         type_name.to_string(),

@@ -17,24 +17,23 @@
 /// `u8`, Swift will use `UInt8`, etc.
 ///
 pub(super) fn generate(native_type: &str, ffi_type: &str, consumer_type: &str) -> String {
-    let mut output = array_conformance(
-        &format!("FFIArray{}", native_type),
-        ffi_type,
-        &format!("ffi_array_{}_init", native_type),
-        &format!("ffi_array_{}_free", native_type),
-    );
-    output.push_str(&option_conformance(
-        consumer_type,
-        ffi_type,
-        &format!("option_{}_init", native_type),
-        &format!("option_{}_free", native_type),
-    ));
-    output.push_str(&consumer_type_base(consumer_type, ffi_type));
-    output.push_str(&consumer_array_type(
-        consumer_type,
-        &format!("FFIArray{}", native_type),
-    ));
-    output
+    [
+        array_conformance(
+            &format!("FFIArray{}", native_type),
+            ffi_type,
+            &format!("ffi_array_{}_init", native_type),
+            &format!("ffi_array_{}_free", native_type),
+        ),
+        option_conformance(
+            consumer_type,
+            ffi_type,
+            &format!("option_{}_init", native_type),
+            &format!("option_{}_free", native_type),
+        ),
+        consumer_type_base(consumer_type, ffi_type),
+        consumer_array_type(consumer_type, &format!("FFIArray{}", native_type)),
+    ]
+    .join("")
 }
 
 /// Conversion from the consumer's native array type to the `FFIArray` type for `native_type`.

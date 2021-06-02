@@ -109,8 +109,10 @@ extension {}: NativeData {{
     }}
 }}
 "#,
-            option_env!("FFI_COMMON_FRAMEWORK").map(|f| format!("import {}", f)).unwrap_or_default(),
-            self.type_name, 
+            option_env!("FFI_COMMON_FRAMEWORK")
+                .map(|f| format!("import {}", f))
+                .unwrap_or_default(),
+            self.type_name,
             self.type_name
         )
     }
@@ -132,11 +134,13 @@ extension {}: NativeArrayData {{
 
 impl From<ConsumerEnum> for String {
     fn from(consumer: ConsumerEnum) -> Self {
-        let mut result = crate::header();
-        result.push_str(&consumer.native_data_impl());
-        result.push_str(&consumer.array_conformance());
-        result.push_str(&consumer.consumer_array_type());
-        result.push_str(&consumer.option_conformance());
-        result
+        [
+            crate::HEADER,
+            &consumer.native_data_impl(),
+            &consumer.array_conformance(),
+            &consumer.consumer_array_type(),
+            &consumer.option_conformance(),
+        ]
+        .join("")
     }
 }

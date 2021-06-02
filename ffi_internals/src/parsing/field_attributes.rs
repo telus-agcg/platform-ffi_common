@@ -59,8 +59,8 @@ impl From<&[Attribute]> for FieldAttributes {
 
 #[cfg(test)]
 mod tests {
-    use syn::Item;
     use super::*;
+    use syn::Item;
 
     #[test]
     fn test_is_raw_ffi_field() {

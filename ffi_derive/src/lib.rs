@@ -13,7 +13,7 @@
 //!
 //! We do this by:
 //! 1. Generating an FFI module for every `ffi_derive` type (that's the main job of this crate).
-//! 1. Generating a C header with [cbindgen](https://github.com/eqrion/cbindgen). 
+//! 1. Generating a C header with [cbindgen](https://github.com/eqrion/cbindgen).
 //!     * The cbindgen configuration needs to be defined in the client library. We may eventually be
 //! able to produce one as a convenience, but for now you'll need to be able to tell cbindgen what
 //! you want exposed.
@@ -46,9 +46,9 @@
 //! implementing any necessary types and (de)serialization in every foreign client, and the overhead
 //! for converting all data to/from JSON isn't trivial if you want to use Rust in a front-end
 //! application.
-//! 1. [Manually wrapping native types](https://github.com/agrian-inc/wise_units) is another option,
-//! with a somewhat cleaner interface, but this ends up with _even more_ duplication, and has more
-//! complex memory management to worry about.
+//! 1. [Manually wrapping native types](https://github.com/agrian-inc/wise_units/tree/develop/ffi)
+//! is another option, with a somewhat cleaner interface, but this ends up with _even more_
+//! duplication, and has more complex memory management to worry about.
 //! 1. There are [other options](https://docs.rs/ffi-support/0.4.2/ffi_support/) that provide
 //! utilities for making an FFI safer, but definitions still need to be duplicated and memory still
 //! needs to be managed individually in wrapping libraries.
@@ -207,9 +207,9 @@
 //! `use crate1::aliases::Foo as Meow`), or uses a fully qualified path instead of an import (as in
 //! `pub field foo: crate1::aliases::Foo`), we won't be able to figure out how to go from that
 //! definition to `Foo` to `u8`.
-//! 
+//!
 //! ### Remote types and multiple consumer frameworks
-//! 
+//!
 //! It's generally useful for consumers to separate the generated code produced by these `ffi_*`
 //! crates into multiple consumer frameworks. This lets them mirror the crate structure instead of
 //! having a single monolithic framework interface. To support that, `ffi_derive` needs to know
@@ -217,13 +217,13 @@
 //! `required_imports` attribute. For example:
 //! ```ignore
 //! use other_crate::module::OtherType;
-//! 
+//!
 //! #[derive(ffi_derive::FFI), ffi(required_imports(other_crate::module::OtherType))]
 //! pub struct SomeType {
 //!     pub field: OtherType
 //! }
 //! ```
-//! 
+//!
 //! This allows us to include an import statement like `import OtherCrate.OtherType` at the top of
 //! the generated consumer file.
 //!

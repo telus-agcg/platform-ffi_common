@@ -9,9 +9,9 @@ use crate::{
     parsing,
 };
 use heck::SnakeCase;
+use parsing::FieldAttributes;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use parsing::FieldAttributes;
 use syn::{Field, Ident};
 
 /// Represents the components of the generated FFI for a field.

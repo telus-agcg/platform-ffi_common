@@ -88,7 +88,12 @@ impl FnFFI {
     /// }
     /// ```
     ///
-    pub fn generate_ffi(&self, module_name: &Ident, type_name: &Ident, type_as_parameter_name: Ident) -> TokenStream {
+    pub fn generate_ffi(
+        &self,
+        module_name: &Ident,
+        type_name: &Ident,
+        type_as_parameter_name: Ident,
+    ) -> TokenStream {
         // If the native function takes a receiver, we'll include an parameter for a pointer to an
         // instance of this type and a line in the function body for dereferencing the pointer.
         let (receiver_arg, receiver_conversion) = if self.has_receiver {

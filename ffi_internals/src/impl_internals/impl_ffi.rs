@@ -116,11 +116,24 @@ impl ImplFFI {
     /// ```
     ///
     pub fn generate_consumer(&self) -> String {
-        let additional_imports: Vec<String> = self.consumer_imports
+        let additional_imports: Vec<String> = self
+            .consumer_imports
             .iter()
             .map(|path| {
-                let crate_name = path.segments.first().unwrap().ident.to_string().to_camel_case();
-                let type_name = path.segments.last().unwrap().ident.to_string().to_camel_case();
+                let crate_name = path
+                    .segments
+                    .first()
+                    .unwrap()
+                    .ident
+                    .to_string()
+                    .to_camel_case();
+                let type_name = path
+                    .segments
+                    .last()
+                    .unwrap()
+                    .ident
+                    .to_string()
+                    .to_camel_case();
                 format!("import class {}.{}", crate_name, type_name)
             })
             .collect();
@@ -133,7 +146,9 @@ public extension {native_type} {{
     {functions}
 }}
             "#,
-            common_framework = option_env!("FFI_COMMON_FRAMEWORK").map(|f| format!("import {}", f)).unwrap_or_default(),
+            common_framework = option_env!("FFI_COMMON_FRAMEWORK")
+                .map(|f| format!("import {}", f))
+                .unwrap_or_default(),
             additional_imports = additional_imports.join("\n"),
             native_type = self.type_name.to_string(),
             functions = self
@@ -172,7 +187,11 @@ impl ImplFFI {
             stream
         });
         let fns = self.fns.iter().fold(quote!(), |mut stream, f| {
-            stream.extend(f.generate_ffi(&self.module_name(), &self.type_name, self.type_name_as_parameter_name()));
+            stream.extend(f.generate_ffi(
+                &self.module_name(),
+                &self.type_name,
+                self.type_name_as_parameter_name(),
+            ));
             stream
         });
         quote! {
