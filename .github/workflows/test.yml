@@ -39,7 +39,7 @@ jobs:
 
   test_ios:
     name: Test (x86_64-apple-ios)
-    runs-on: [self-hosted, macOS]
+    runs-on: macos-latest
     env:
       DYLD_ROOT_PATH: '/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app'
     steps:
