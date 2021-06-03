@@ -58,7 +58,7 @@ pub struct StructInputs {
     pub required_imports: Vec<Path>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum DeriveError {
     UnnamedFields,
     UnitFields,

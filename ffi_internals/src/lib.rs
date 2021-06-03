@@ -5,6 +5,23 @@
 //! they can be shared between the codegen crates without needing to expose them in `ffi_common`,
 //! which has more general FFI stuff.
 //!
+#![warn(
+    clippy::all,
+    clippy::correctness,
+    clippy::nursery,
+    clippy::pedantic,
+    future_incompatible,
+    missing_copy_implementations,
+    // missing_docs,
+    nonstandard_style,
+    trivial_casts,
+    trivial_numeric_casts,
+    unreachable_pub,
+    unused_extern_crates,
+    unused_qualifications,
+    unused_results,
+    variant_size_differences
+)]
 
 pub mod alias_resolution;
 pub mod impl_internals;

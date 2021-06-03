@@ -202,7 +202,7 @@
 //! provides multiple keys in `alias_modules`, and an identical alias is defined in each of those
 //! modules, we may interpret the type incorrectly. If that scenario comes up, we can work around it
 //! by moving the helper attribute from the struct to the individual fields (since there we only
-//! need to point to one alias_module at a time), but it gets awfully tedious, so we're not doing
+//! need to point to one `alias_module` at a time), but it gets awfully tedious, so we're not doing
 //! that yet. Second, if a type is renamed when it's imported (as in
 //! `use crate1::aliases::Foo as Meow`), or uses a fully qualified path instead of an import (as in
 //! `pub field foo: crate1::aliases::Foo`), we won't be able to figure out how to go from that
@@ -267,6 +267,10 @@
 //!
 
 #![warn(
+    clippy::all,
+    clippy::correctness,
+    clippy::nursery,
+    clippy::pedantic,
     future_incompatible,
     missing_copy_implementations,
     nonstandard_style,
@@ -275,14 +279,7 @@
     unreachable_pub,
     unused_qualifications,
     unused_results,
-    variant_size_differences,
-    clippy::all,
-    clippy::complexity,
-    clippy::correctness,
-    clippy::pedantic,
-    clippy::perf,
-    clippy::nursery,
-    clippy::style
+    variant_size_differences
 )]
 #![forbid(missing_docs, unused_extern_crates, unused_imports)]
 
@@ -357,7 +354,7 @@ fn out_dir() -> String {
     format!("{}/{}", root_output_dir, package_name)
 }
 
-/// Parses a module that contains typealiases and stores that information for other ffi_derive calls
+/// Parses a module that contains typealiases and stores that information for other `ffi_derive` calls
 /// to use later in resolving aliases.
 ///
 #[proc_macro_attribute]
