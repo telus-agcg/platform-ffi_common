@@ -8,11 +8,12 @@ use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::{collections::HashSet, convert::TryFrom};
-use syn::{Fields, Ident};
+use syn::{Fields, Ident, Path};
 
 pub struct StructFFI {
     module: Ident,
     pub name: Ident,
+    pub required_imports: Vec<Path>,
     pub fields: Vec<FieldFFI>,
     init_arguments: TokenStream,
     assignment_expressions: TokenStream,
@@ -54,9 +55,10 @@ pub struct StructInputs {
     pub type_name: Ident,
     pub data: syn::DataStruct,
     pub alias_modules: Vec<String>,
+    pub required_imports: Vec<Path>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum DeriveError {
     UnnamedFields,
     UnitFields,
@@ -93,6 +95,7 @@ impl TryFrom<&StructInputs> for StructFFI {
         Ok(Self {
             module,
             name,
+            required_imports: derive.required_imports.clone(),
             fields,
             init_arguments,
             assignment_expressions,

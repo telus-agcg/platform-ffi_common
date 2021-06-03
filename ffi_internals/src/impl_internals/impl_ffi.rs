@@ -4,7 +4,7 @@
 //!
 
 use super::fn_ffi::FnFFI;
-use heck::SnakeCase;
+use heck::{CamelCase, SnakeCase};
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, ImplItem, Path};
@@ -19,9 +19,13 @@ pub struct ImplInputs {
     ///
     pub items: Vec<ImplItem>,
 
-    /// Any import paths specified in the attributes on the macro invocation.
+    /// Any FFI import paths specified in the attributes on the macro invocation.
     ///
-    pub import_paths: Vec<Path>,
+    pub ffi_imports: Vec<Path>,
+
+    /// Any consumer import paths specified in the attributes on the macro invocation.
+    ///
+    pub consumer_imports: Vec<Path>,
 
     /// The name of the trait that's implemented.
     ///
@@ -55,7 +59,8 @@ impl From<ImplInputs> for ImplFFI {
             trait_name: inputs.trait_name,
             type_name: inputs.type_name,
             fns,
-            import_paths: inputs.import_paths,
+            ffi_imports: inputs.ffi_imports,
+            consumer_imports: inputs.consumer_imports,
         }
     }
 }
@@ -83,9 +88,13 @@ pub struct ImplFFI {
     ///
     fns: Vec<FnFFI>,
 
-    /// Any import paths specified in the attributes on the macro invocation.
+    /// Any FFI import paths specified in the attributes on the macro invocation.
     ///
-    import_paths: Vec<Path>,
+    ffi_imports: Vec<Path>,
+
+    /// Any consumer import paths specified in the attributes on the macro invocation.
+    ///
+    consumer_imports: Vec<Path>,
 }
 
 impl ImplFFI {
@@ -107,17 +116,45 @@ impl ImplFFI {
     /// ```
     ///
     pub fn generate_consumer(&self) -> String {
+        let additional_imports: Vec<String> = self
+            .consumer_imports
+            .iter()
+            .map(|path| {
+                let crate_name = path
+                    .segments
+                    .first()
+                    .unwrap()
+                    .ident
+                    .to_string()
+                    .to_camel_case();
+                let type_name = path
+                    .segments
+                    .last()
+                    .unwrap()
+                    .ident
+                    .to_string()
+                    .to_camel_case();
+                format!("import class {}.{}", crate_name, type_name)
+            })
+            .collect();
         format!(
             r#"
-extension {native_type} {{
+{common_framework}
+{additional_imports}
+
+public extension {native_type} {{
     {functions}
 }}
             "#,
+            common_framework = option_env!("FFI_COMMON_FRAMEWORK")
+                .map(|f| format!("import {}", f))
+                .unwrap_or_default(),
+            additional_imports = additional_imports.join("\n"),
             native_type = self.type_name.to_string(),
             functions = self
                 .fns
                 .iter()
-                .map(|f| f.generate_consumer())
+                .map(|f| f.generate_consumer(&self.module_name()))
                 .collect::<Vec<String>>()
                 .join("\n"),
         )
@@ -145,12 +182,16 @@ impl ImplFFI {
 
     pub fn generate_ffi(&self) -> TokenStream {
         let mod_name = self.module_name();
-        let imports = self.import_paths.iter().fold(quote!(), |mut stream, path| {
+        let imports = self.ffi_imports.iter().fold(quote!(), |mut stream, path| {
             stream.extend(quote!(use #path;));
             stream
         });
         let fns = self.fns.iter().fold(quote!(), |mut stream, f| {
-            stream.extend(f.generate_ffi(&self.type_name, self.type_name_as_parameter_name()));
+            stream.extend(f.generate_ffi(
+                &self.module_name(),
+                &self.type_name,
+                self.type_name_as_parameter_name(),
+            ));
             stream
         });
         quote! {

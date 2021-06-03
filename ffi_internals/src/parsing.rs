@@ -5,9 +5,36 @@
 use std::fs::File;
 use std::io::Read;
 use syn::{
-    Attribute, GenericArgument, Ident, Item, Lit, Meta, NestedMeta, Path, PathArguments,
-    PathSegment, Type,
+    Attribute, GenericArgument, Ident, Item, Meta, NestedMeta, Path, PathArguments, PathSegment,
+    Type,
 };
+
+mod field_attributes;
+mod impl_attributes;
+mod struct_attributes;
+
+pub use field_attributes::FieldAttributes;
+pub use impl_attributes::ImplAttributes;
+pub use struct_attributes::StructAttributes;
+
+/// If the path of the `Attribute` parameter is `"ffi"`, this will return a Vec of the attribute's
+/// `NestedMeta` data. If other types of data are found in an `"ffi"` attribute, this will panic.
+///
+fn parse_ffi_meta(attr: &Attribute) -> Result<Vec<NestedMeta>, ()> {
+    if !attr.path.is_ident("ffi") {
+        return Ok(Vec::new());
+    }
+
+    match attr.parse_meta() {
+        Ok(Meta::List(meta)) => Ok(meta.nested.into_iter().collect()),
+        Ok(other) => {
+            panic!("Unexpected meta attribute found: {:?}", other);
+        }
+        Err(err) => {
+            panic!("Error parsing meta attribute: {:?}", err);
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(super) enum WrappingType {
@@ -31,7 +58,7 @@ pub fn is_repr_c(attrs: &[Attribute]) -> bool {
             if let Meta::List(l) = m {
                 if l.path.segments.first().map(|s| s.ident.to_string()) == Some("repr".to_string())
                 {
-                    if let NestedMeta::Meta(m) = l.nested.first().unwrap_or_else(|| panic!(format!("Expected attribute list to include metadata: {:?} to have an identifier.", &l))) {
+                    if let NestedMeta::Meta(m) = l.nested.first().unwrap_or_else(|| panic!("Expected attribute list to include metadata: {:?} to have an identifier.", &l)) {
                         return m.path().segments.first().map(|s| s.ident.to_string()) == Some("C".to_string());
                     }
                 }
@@ -53,7 +80,7 @@ pub fn is_repr_c(attrs: &[Attribute]) -> bool {
 /// Pretty gross, but should get nuked in DEV-13175 in favor parsing the FFI module into a type.
 ///
 #[allow(clippy::complexity)]
-pub fn custom_ffi_types(
+pub fn parse_custom_ffi_type(
     path: &str,
     type_name: &str,
     expected_init: &Ident,
@@ -130,102 +157,15 @@ pub fn custom_ffi_types(
     (init_data, function_data)
 }
 
-fn parse_ffi_meta(attr: &Attribute) -> Result<Vec<NestedMeta>, ()> {
-    if !attr.path.is_ident("ffi") {
-        return Ok(Vec::new());
-    }
-
-    match attr.parse_meta() {
-        Ok(Meta::List(meta)) => Ok(meta.nested.into_iter().collect()),
-        Ok(other) => {
-            panic!("Unexpected meta attribute found: {:?}", other);
-        }
-        Err(err) => {
-            panic!("Error parsing meta attribute: {:?}", err);
-        }
-    }
-}
-
-pub fn parse_fn_attributes(args: &[NestedMeta]) -> Vec<Path> {
-    args.iter()
-        .cloned()
-        .filter_map(|arg| {
-            if let NestedMeta::Meta(meta) = arg {
-                if let Meta::Path(path) = meta {
-                    return Some(path);
-                }
-            }
-            None
-        })
-        .collect()
-}
-
-pub struct StructAttributes {
-    pub alias_modules: Vec<String>,
-    pub custom_path: Option<String>,
-}
-
-pub fn parse_struct_attributes(attrs: &[Attribute]) -> StructAttributes {
-    let mut alias_modules = vec![];
-    let mut custom_path: Option<String> = None;
-    for meta_item in attrs.iter().flat_map(parse_ffi_meta).flatten() {
-        match &meta_item {
-            NestedMeta::Meta(Meta::NameValue(m)) if m.path.is_ident("custom") => {
-                if let Lit::Str(lit) = &m.lit {
-                    custom_path = Some(lit.value());
-                }
-            }
-            NestedMeta::Meta(Meta::List(l)) if l.path.is_ident("alias_modules") => {
-                alias_modules.extend(l.nested.iter().flat_map(parse_alias_modules));
-            }
-            other => {
-                panic!("Unsupported ffi attribute type: {:?}", other);
-            }
-        }
-    }
-    StructAttributes {
-        alias_modules,
-        custom_path,
-    }
-}
-
-pub(super) fn parse_field_attributes(
-    attrs: &[Attribute],
-) -> crate::struct_internals::field_ffi::FieldAttributes {
-    let mut expose_as: Option<syn::Path> = None;
-    let mut raw = false;
-    for meta_item in attrs.iter().flat_map(parse_ffi_meta).flatten() {
-        match &meta_item {
-            NestedMeta::Meta(Meta::NameValue(m)) if m.path.is_ident("expose_as") => {
-                if let Lit::Str(lit) = &m.lit {
-                    expose_as = Some(syn::parse_str(&lit.value()).expect("Not a valid path"));
-                }
-            }
-            NestedMeta::Meta(Meta::Path(p)) if p.is_ident("raw") => {
-                raw = true;
-            }
-            other => {
-                panic!("Unsupported ffi attribute type: {:?}", other);
-            }
-        }
-    }
-    crate::struct_internals::field_ffi::FieldAttributes { expose_as, raw }
-}
-
-/// Dig the paths out of a struct attribute argument and collect them into a `Vec<String>`.
+/// Dig the `Meta::Path` out of a `NestedMeta` if present, and return the `Path`.
 ///
-fn parse_alias_modules(arg: &NestedMeta) -> Vec<String> {
-    match arg {
-        NestedMeta::Meta(Meta::Path(path)) => {
-            return path.segments.iter().map(|s| s.ident.to_string()).collect();
-        }
-        NestedMeta::Meta(_) => {
-            panic!("Unexpected meta attribute {:?}", arg);
-        }
-        NestedMeta::Lit(lit) => {
-            panic!("Unexpected literal attribute {:?}", lit);
+pub(super) fn parse_path_from_nested_meta(arg: &NestedMeta) -> Option<Path> {
+    if let NestedMeta::Meta(meta) = arg {
+        if let Meta::Path(path) = meta {
+            return Some(path.clone());
         }
     }
+    None
 }
 
 /// Finds the first `PathSegment` for `field_type`.
@@ -267,7 +207,8 @@ pub(super) fn separate_wrapping_type_from_inner_type(
                             separate_wrapping_type_from_inner_type(inner_segment.clone());
                         assert!(
                             unwrapped.1 == WrappingType::Vec,
-                            format!("Expected Vec<T>, found {:?}", inner_segment)
+                            "Expected Vec<T>, found {:?}",
+                            inner_segment
                         );
                         (unwrapped.0, WrappingType::OptionVec)
                     } else {
@@ -318,59 +259,6 @@ mod tests {
             _ => panic!("Unexpected item type"),
         };
         assert!(!is_repr_c(&*item.attrs));
-    }
-
-    #[test]
-    fn test_is_raw_ffi_field() {
-        let item = match syn::parse_str::<Item>(
-            r#"
-            #[derive(Clone, Copy, Debug, PartialEq)]
-            #[doc = "a doc attr"]
-            #[repr(C)]
-            struct TestStruct {
-                #[ffi(raw)]
-                test_field: CustomReprCType
-            }
-        "#,
-        ) {
-            Ok(Item::Struct(i)) => i,
-            _ => panic!("Unexpected item type"),
-        };
-        let field = match item.fields {
-            syn::Fields::Named(n) => n,
-            _ => panic!("Unexpected field type"),
-        }
-        .named
-        .first()
-        .expect("Failed to parse field")
-        .to_owned();
-        assert!(parse_field_attributes(&field.attrs).raw);
-    }
-
-    #[test]
-    fn test_is_not_raw_ffi_field() {
-        let item = match syn::parse_str::<Item>(
-            r#"
-                #[derive(Clone, Copy, Debug, PartialEq)]
-                #[doc = "a doc attr"]
-                #[repr(C)]
-                struct TestStruct {
-                    test_field: CustomNonReprCType
-                }
-            "#,
-        ) {
-            Ok(Item::Struct(i)) => i,
-            _ => panic!("Unexpected item type"),
-        };
-        let field = match item.fields {
-            syn::Fields::Named(n) => n,
-            _ => panic!("Unexpected field type"),
-        }
-        .named
-        .first()
-        .expect("Failed to parse field")
-        .to_owned();
-        assert!(!parse_field_attributes(&field.attrs).raw);
     }
 
     #[test]

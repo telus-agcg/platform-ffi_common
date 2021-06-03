@@ -5,7 +5,7 @@
 
 use crate::native_type_data::{Context, NativeTypeData, UnparsedNativeTypeData};
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{format_ident, quote};
 use syn::{Ident, ImplItemMethod, PatType, Type};
 
 /// A representation of a Rust fn that can be used to generate an FFI and consumer code for
@@ -88,7 +88,12 @@ impl FnFFI {
     /// }
     /// ```
     ///
-    pub fn generate_ffi(&self, type_name: &Ident, type_as_parameter_name: Ident) -> TokenStream {
+    pub fn generate_ffi(
+        &self,
+        module_name: &Ident,
+        type_name: &Ident,
+        type_as_parameter_name: Ident,
+    ) -> TokenStream {
         // If the native function takes a receiver, we'll include an parameter for a pointer to an
         // instance of this type and a line in the function body for dereferencing the pointer.
         let (receiver_arg, receiver_conversion) = if self.has_receiver {
@@ -127,11 +132,12 @@ impl FnFFI {
             },
         );
 
-        let fn_name = self.fn_name.clone();
+        let ffi_fn_name = self.ffi_fn_name(module_name);
+        let native_fn_name = &self.fn_name;
         let native_call = if self.has_receiver {
-            quote!(data.#fn_name)
+            quote!(data.#native_fn_name)
         } else {
-            quote!(#type_name::#fn_name)
+            quote!(#type_name::#native_fn_name)
         };
         let return_type = self
             .return_type
@@ -158,17 +164,22 @@ impl FnFFI {
             quote!(#native_call(#calling_args);)
         };
         quote! {
-            pub unsafe extern "C" fn #fn_name(#signature_args) -> #return_type {
+            #[no_mangle]
+            pub unsafe extern "C" fn #ffi_fn_name(#signature_args) -> #return_type {
                 #parameter_conversions
                 #call_and_return
             }
         }
     }
 
+    fn ffi_fn_name(&self, module_name: &Ident) -> Ident {
+        format_ident!("{}_{}", module_name, self.fn_name)
+    }
+
     /// Generates a consumer function for calling the foreign function produced by
     /// `self.generate_ffi(...)`.
     ///
-    pub fn generate_consumer(&self) -> String {
+    pub fn generate_consumer(&self, module_name: &Ident) -> String {
         let (return_conversion, close_conversion, return_sig) =
             if let Some(return_type) = &self.return_type {
                 let ty = return_type.consumer_type(None);
@@ -190,7 +201,7 @@ impl FnFFI {
             native_parameters = self.consumer_parameters(),
             return_sig = return_sig,
             return_conversion = return_conversion,
-            ffi_fn_name = self.fn_name.to_string(),
+            ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
             ffi_parameters = self.ffi_calling_arguments(),
             close_conversion = close_conversion,
         )

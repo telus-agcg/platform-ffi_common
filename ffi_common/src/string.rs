@@ -205,9 +205,10 @@ impl From<FFIArrayString> for Option<Vec<Uuid>> {
 /// # Safety
 ///
 /// We're assuming that the memory in the `FFIArrayString` you give us was allocated by Rust in the
-/// process of creating an `FFIArrayString` initialized natively in Rust. If you do something
-/// bizarre (like initializing an `FFIArrayString` on the other side of the FFI boundary), this will
-/// have undefined behavior. Don't do that.
+/// process of creating an `FFIArrayString` initialized natively in Rust (either internally
+/// or through the provided FFI constructor `ffi_array_*_init`). If you do something bizarre (like
+/// initializing an `FFIArrayString` on the other side of the FFI boundary), this will have
+/// undefined behavior. Don't do that.
 ///
 /// You **must not** access `array` after passing it to `ffi_array_string_free`.
 ///

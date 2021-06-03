@@ -4,6 +4,10 @@
 //!
 
 #![warn(
+    clippy::all,
+    clippy::correctness,
+    clippy::nursery,
+    clippy::pedantic,
     future_incompatible,
     missing_copy_implementations,
     nonstandard_style,
@@ -12,14 +16,7 @@
     unreachable_pub,
     unused_qualifications,
     unused_results,
-    variant_size_differences,
-    clippy::all,
-    clippy::complexity,
-    clippy::correctness,
-    clippy::pedantic,
-    clippy::perf,
-    clippy::nursery,
-    clippy::style
+    variant_size_differences
 )]
 #![forbid(missing_docs, unused_extern_crates, unused_imports)]
 

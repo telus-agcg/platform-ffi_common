@@ -11,21 +11,24 @@ use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::format_ident;
 use std::convert::TryFrom;
-use syn::Ident;
+use syn::{Ident, Path};
 
 pub(super) fn custom(
     type_name: &Ident,
     module_name: &Ident,
     custom_path: &str,
+    required_imports: Vec<Path>,
     out_dir: &str,
 ) -> TokenStream {
     let init_fn_name = format_ident!("{}_init", &type_name.to_string().to_snake_case());
     let free_fn_name = format_ident!("{}_free", &type_name.to_string().to_snake_case());
     let clone_fn_name = format_ident!("clone_{}", &type_name.to_string().to_snake_case());
-    let custom_ffi = parsing::custom_ffi_types(custom_path, &type_name.to_string(), &init_fn_name);
+    let custom_ffi =
+        parsing::parse_custom_ffi_type(custom_path, &type_name.to_string(), &init_fn_name);
 
     let consumer = ConsumerStruct::custom(
         type_name.to_string(),
+        required_imports,
         init_fn_name.to_string(),
         custom_ffi.0.as_ref(),
         custom_ffi.1.as_ref(),
@@ -60,6 +63,7 @@ pub(super) fn standard(
     type_name: &Ident,
     data: syn::DataStruct,
     alias_modules: Vec<String>,
+    required_imports: Vec<Path>,
     out_dir: &str,
 ) -> TokenStream {
     let struct_ffi = StructFFI::try_from(&StructInputs {
@@ -67,6 +71,7 @@ pub(super) fn standard(
         type_name: type_name.clone(),
         data,
         alias_modules,
+        required_imports,
     })
     .expect("Unsupported struct data");
     let file_name = format!("{}.swift", type_name.to_string());
