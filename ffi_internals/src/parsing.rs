@@ -58,7 +58,7 @@ pub fn is_repr_c(attrs: &[Attribute]) -> bool {
             if let Meta::List(l) = m {
                 if l.path.segments.first().map(|s| s.ident.to_string()) == Some("repr".to_string())
                 {
-                    if let NestedMeta::Meta(m) = l.nested.first().unwrap_or_else(|| panic!(format!("Expected attribute list to include metadata: {:?} to have an identifier.", &l))) {
+                    if let NestedMeta::Meta(m) = l.nested.first().unwrap_or_else(|| panic!("Expected attribute list to include metadata: {:?} to have an identifier.", &l)) {
                         return m.path().segments.first().map(|s| s.ident.to_string()) == Some("C".to_string());
                     }
                 }
@@ -207,7 +207,8 @@ pub(super) fn separate_wrapping_type_from_inner_type(
                             separate_wrapping_type_from_inner_type(inner_segment.clone());
                         assert!(
                             unwrapped.1 == WrappingType::Vec,
-                            format!("Expected Vec<T>, found {:?}", inner_segment)
+                            "Expected Vec<T>, found {:?}",
+                            inner_segment
                         );
                         (unwrapped.0, WrappingType::OptionVec)
                     } else {

@@ -18,7 +18,7 @@
 //! put the generated primitives and other FFI glue code in one framework, but put each crate's
 //! generated consumer code in its own consumer framework to avoid having a single massive
 //! interface), you can specify that common framework with the environment variable
-//! "FFI_COMMON_FRAMEWORK".
+//! `"FFI_COMMON_FRAMEWORK"`.
 //! 1. Create a `build.rs` file at the root of the crate with the following:
 //! ```ignore
 //! fn main() {
@@ -35,6 +35,10 @@
 //!
 
 #![warn(
+    clippy::all,
+    clippy::correctness,
+    clippy::nursery,
+    clippy::pedantic,
     future_incompatible,
     missing_copy_implementations,
     nonstandard_style,
@@ -43,14 +47,7 @@
     unreachable_pub,
     unused_qualifications,
     unused_results,
-    variant_size_differences,
-    clippy::all,
-    clippy::complexity,
-    clippy::correctness,
-    clippy::pedantic,
-    clippy::perf,
-    clippy::nursery,
-    clippy::style
+    variant_size_differences
 )]
 #![forbid(missing_docs, unused_extern_crates, unused_imports)]
 

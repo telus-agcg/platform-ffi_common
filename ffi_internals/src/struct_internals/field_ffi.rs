@@ -181,12 +181,7 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
         let field_name = field
             .ident
             .as_ref()
-            .unwrap_or_else(|| {
-                panic!(format!(
-                    "Expected field: {:?} to have an identifier.",
-                    &field
-                ))
-            })
+            .unwrap_or_else(|| panic!("Expected field: {:?} to have an identifier.", &field))
             .clone();
         let attributes = FieldAttributes::from(&*field.attrs);
         let (wrapping_type, unaliased_field_type) = match parsing::get_segment_for_field(&field.ty)

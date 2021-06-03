@@ -76,7 +76,7 @@ impl From<Ident> for NativeType {
 /// even the type it's exposed as is different depending on whether it's being returned to the
 /// consumer or passed in as an argument to a Rust function.
 ///
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum Context {
     /// Type is being used as an argument to a Rust function.
     Argument,
