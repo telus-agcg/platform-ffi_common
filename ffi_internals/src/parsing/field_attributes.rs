@@ -36,7 +36,7 @@ impl FieldAttributes {
 
 impl From<&[Attribute]> for FieldAttributes {
     fn from(attrs: &[Attribute]) -> Self {
-        let mut expose_as: Option<syn::Path> = None;
+        let mut expose_as: Option<Path> = None;
         let mut raw = false;
         for meta_item in attrs.iter().flat_map(super::parse_ffi_meta).flatten() {
             match &meta_item {

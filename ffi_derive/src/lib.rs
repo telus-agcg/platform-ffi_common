@@ -362,6 +362,7 @@ pub fn alias_resolution(attr: TokenStream, item: TokenStream) -> TokenStream {
     let resolution_key = attr.to_string();
     let module = parse_macro_input!(item as ItemMod);
     alias_resolution::parse_alias_module(resolution_key, module)
+        .unwrap()
         .into_token_stream()
         .into()
 }

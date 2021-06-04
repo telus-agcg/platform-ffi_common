@@ -191,7 +191,7 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
                     parsing::separate_wrapping_type_from_inner_type(segment);
                 (
                     wrapping_type,
-                    alias_resolution::resolve_type_alias(&ident, alias_modules),
+                    alias_resolution::resolve_type_alias(&ident, alias_modules, None).unwrap(),
                 )
             }
             None => panic!("No path segment (field without a type?)"),
