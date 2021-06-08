@@ -486,7 +486,7 @@ impl NativeTypeData {
 /// Returns a `NativeTypeData` describing the native type for a custom FFI type, so we can use that
 /// structure to generate the consumer structure just like we do with generated FFIs.
 ///
-pub fn native_type_data_for_custom(ffi_type: &syn::Type) -> NativeTypeData {
+pub fn native_type_data_for_custom(ffi_type: &Type) -> NativeTypeData {
     match ffi_type {
         Type::Path(type_path) => {
             let (ident, wrapping_type) = parsing::separate_wrapping_type_from_inner_type(

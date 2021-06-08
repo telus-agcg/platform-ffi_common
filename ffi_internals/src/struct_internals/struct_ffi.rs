@@ -41,7 +41,7 @@ impl StructFFI {
             .as_slice()
             .iter()
             .filter_map(|f| f.attributes.expose_as.as_ref())
-            .collect::<HashSet<&syn::Path>>()
+            .collect::<HashSet<&Path>>()
             .iter()
             .fold(quote!(), |mut acc, path| {
                 acc.extend(quote!(use #path;));
