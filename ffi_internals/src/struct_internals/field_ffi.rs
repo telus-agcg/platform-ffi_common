@@ -40,7 +40,7 @@ impl FieldFFI {
     ///
     #[must_use]
     pub fn getter_name(&self) -> Ident {
-        if self.native_type_data.option {
+        if self.native_type_data.is_option {
             format_ident!(
                 "get_optional_{}_{}",
                 self.type_name.to_string().to_snake_case(),
@@ -67,75 +67,8 @@ impl FieldFFI {
         let ffi_type = &self
             .native_type_data
             .ffi_type(self.attributes.expose_as_ident(), &Context::Return);
-        let conversion: TokenStream = if self.native_type_data.vec {
-            if self.native_type_data.option {
-                quote!(data.#field_name.as_deref().into())
-            } else {
-                quote!((&*data.#field_name).into())
-            }
-        } else {
-            match &self.native_type_data.native_type {
-                NativeType::Boxed(_) => {
-                    if self.native_type_data.option {
-                        let mut return_value = quote!(f.clone());
-                        // If this field is exposed as a different type for FFI, convert it back to
-                        // the native type.
-                        if self.attributes.expose_as.is_some() {
-                            return_value = quote!(#return_value.into())
-                        }
-                        quote!(
-                            data.#field_name.as_ref().map_or(ptr::null(), |f| {
-                                Box::into_raw(Box::new(#return_value))
-                            })
-                        )
-                    } else {
-                        let mut return_value = quote!(data.#field_name.clone());
-                        // If this field is exposed as a different type for FFI, convert it back to
-                        // the native type.
-                        if self.attributes.expose_as.is_some() {
-                            return_value = quote!(#return_value.into())
-                        }
-                        quote!(Box::into_raw(Box::new(#return_value)))
-                    }
-                }
-                NativeType::DateTime => {
-                    if self.native_type_data.option {
-                        quote!(
-                            data.#field_name.as_ref().map_or(ptr::null(), |f| {
-                                Box::into_raw(Box::new(f.into()))
-                            })
-                        )
-                    } else {
-                        quote!(Box::into_raw(Box::new((&data.#field_name).into())))
-                    }
-                }
-                NativeType::Raw(inner) => {
-                    if self.native_type_data.option {
-                        let boxer =
-                            format_ident!("option_{}_init", inner.to_string().to_snake_case());
-                        quote!(
-                            match data.#field_name {
-                                Some(data) => #boxer(true, data),
-                                None => #boxer(false, #inner::default()),
-                            }
-                        )
-                    } else {
-                        quote!(data.#field_name.clone().into())
-                    }
-                }
-                NativeType::String | NativeType::Uuid => {
-                    if self.native_type_data.option {
-                        quote!(
-                            data.#field_name.as_ref().map_or(ptr::null(), |s| {
-                                ffi_common::ffi_core::ffi_string!(s.to_string())
-                            })
-                        )
-                    } else {
-                        quote!(ffi_string!(data.#field_name.to_string()))
-                    }
-                }
-            }
-        };
+        let accessor = quote!(data.#field_name);
+        let conversion = self.native_type_data.rust_to_ffi_value(accessor, &self.attributes);
 
         quote! {
             ffi_common::ffi_core::paste! {

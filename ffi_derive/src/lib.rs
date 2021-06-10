@@ -288,7 +288,10 @@ mod struct_ffi;
 
 use ffi_internals::{
     alias_resolution,
-    impl_internals::impl_ffi::{ImplFFI, ImplInputs},
+    impl_internals::{
+        impl_ffi::{ImplFFI, ImplInputs},
+        fn_ffi::FnFFI
+    },
     parsing,
     quote::{format_ident, ToTokens},
     syn::{parse_macro_input, AttributeArgs, Data, DeriveInput, ItemImpl, ItemMod, Type},
@@ -370,7 +373,7 @@ pub fn alias_resolution(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Parses an impl and produces a module exposing that impl's functions over FFI.
 ///
 #[proc_macro_attribute]
-pub fn expose_items(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as AttributeArgs);
     let impl_attributes = parsing::ImplAttributes::from(args);
     let item_impl = parse_macro_input!(item as ItemImpl);
@@ -389,6 +392,7 @@ pub fn expose_items(attr: TokenStream, item: TokenStream) -> TokenStream {
         items: item_impl.items.clone(),
         ffi_imports: impl_attributes.ffi_imports,
         consumer_imports: impl_attributes.consumer_imports,
+        raw_types: impl_attributes.raw_types,
         trait_name,
         type_name,
     });
@@ -399,6 +403,32 @@ pub fn expose_items(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let output = ffi_internals::quote::quote! {
         #item_impl
+
+        #ffi
+    };
+
+    output.into()
+}
+
+/// Parses a fn and produces a module exposing that function over FFI.
+///
+#[proc_macro_attribute]
+pub fn expose_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let args = syn::parse_macro_input!(attr as syn::AttributeArgs);
+    let impl_attributes = parsing::ImplAttributes::from(args);
+    let item_fn = syn::parse_macro_input!(item as syn::ItemFn);
+
+    let fn_ffi = FnFFI::from((&item_fn, impl_attributes.raw_types));
+    let module_name = format_ident!("{}_ffi", item_fn.sig.ident);
+    let file_name = [&module_name.to_string(), ".swift"].join("");
+    let out_dir = out_dir();
+    ffi_internals::write_consumer_file(&file_name, fn_ffi.generate_consumer(&module_name), &out_dir);
+    
+    
+    let ffi = fn_ffi.generate_ffi(&module_name, None, None);
+
+    let output = quote::quote! {
+        #item_fn
 
         #ffi
     };

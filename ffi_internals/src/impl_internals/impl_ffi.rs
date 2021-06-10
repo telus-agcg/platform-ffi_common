@@ -27,6 +27,11 @@ pub struct ImplInputs {
     ///
     pub consumer_imports: Vec<Path>,
 
+    /// Any types referenced in the impl that should be passed through the FFI without wrapping,
+    /// such as numerics or `repr(C)` enums/structs.
+    ///
+    pub raw_types: Vec<Ident>,
+
     /// The name of the trait that's implemented.
     ///
     /// Note that this is currently required; we don't support standalone impls right now because
@@ -48,7 +53,7 @@ impl From<ImplInputs> for ImplFFI {
             .iter()
             .filter_map(|item| {
                 if let syn::ImplItem::Method(method) = item {
-                    Some(FnFFI::from(method))
+                    Some(FnFFI::from((method, inputs.raw_types.clone())))
                 } else {
                     None
                 }
@@ -189,8 +194,8 @@ impl ImplFFI {
         let fns = self.fns.iter().fold(quote!(), |mut stream, f| {
             stream.extend(f.generate_ffi(
                 &self.module_name(),
-                &self.type_name,
-                self.type_name_as_parameter_name(),
+                Some(&self.type_name),
+                Some(&self.type_name_as_parameter_name()),
             ));
             stream
         });
