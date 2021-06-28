@@ -6,8 +6,8 @@
 use crate::{parsing, parsing::{FieldAttributes, WrappingType}};
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
-use std::convert::TryFrom;
+use quote::{ToTokens, format_ident, quote};
+use std::{any::Any, convert::TryFrom};
 use syn::{Ident, Type};
 
 static STRING: &str = "String";
@@ -371,13 +371,15 @@ pub struct UnparsedNativeTypeData {
     /// opposed to being wrapped in a `Box`.
     /// 
     pub raw_types: Vec<Ident>,
+
+    self_type: Option<Ident>,
 }
 
 impl UnparsedNativeTypeData {
     /// The initial state for `UnparsedNativeTypeData`, where the `option`, `vec` and `result`
     /// fields are all set to false.
     ///
-    pub fn initial(ty: Type, raw_types: Vec<Ident>) -> Self {
+    pub fn initial(ty: Type, raw_types: Vec<Ident>, self_type: Option<Ident>) -> Self {
         Self {
             ty,
             is_option: false,
@@ -386,6 +388,7 @@ impl UnparsedNativeTypeData {
             is_cow: false,
             is_borrow: false,
             raw_types,
+            self_type,
         }
     }
 }
@@ -466,6 +469,12 @@ impl From<UnparsedNativeTypeData> for NativeTypeData {
                     unparsed.ty = arg.clone();
                     Self::from(unparsed)
                 } else {
+                    let mut ident = ident;
+                    // If we have a `Self`, replace that with the actual type, since `Self` won't be
+                    // in scope in our FFI module.
+                    if ident == format_ident!("Self") {
+                        ident = unparsed.self_type.expect("Found 'Self' type, but no `self_type` provided to replace it with.");
+                    }
                     let native_type = if unparsed.raw_types.contains(&ident) {
                         NativeType::Raw(ident)
                     } else {
@@ -614,11 +623,22 @@ impl NativeTypeData {
         let t = if self.is_vec {
             quote!(Vec::<#t>)
         } else {
-            quote!(#t)
+            if self.is_borrow {
+                quote!(&#t)
+            } else {
+                t
+            }
         };
-        let t = if self.is_borrow { quote!(&#t) } else { t };
         let t = if self.is_option { quote!(Option::<#t>) } else { t };
         t
+        // let t = if self.is_vec {
+        //     quote!(Vec::<#t>)
+        // } else {
+        //     quote!(#t)
+        // };
+        // let t = if self.is_borrow { quote!(&#t) } else { t };
+        // let t = if self.is_option { quote!(Option::<#t>) } else { t };
+        // t
     }
 }
 

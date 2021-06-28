@@ -10,10 +10,12 @@ use syn::{
 };
 
 mod field_attributes;
+mod fn_attributes;
 mod impl_attributes;
 mod struct_attributes;
 
 pub use field_attributes::FieldAttributes;
+pub use fn_attributes::FnAttributes;
 pub use impl_attributes::ImplAttributes;
 pub use struct_attributes::StructAttributes;
 

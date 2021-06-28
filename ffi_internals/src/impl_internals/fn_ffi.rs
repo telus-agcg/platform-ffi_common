@@ -30,16 +30,16 @@ pub struct FnFFI {
     pub return_type: Option<NativeTypeData>,
 }
 
-impl From<(&ImplItemMethod, Vec<Ident>)> for FnFFI {
-    fn from(data: (&ImplItemMethod, Vec<Ident>)) -> Self {
-        let (method, raw_types) = data;
+impl From<(&ImplItemMethod, Vec<Ident>, Ident)> for FnFFI {
+    fn from(data: (&ImplItemMethod, Vec<Ident>, Ident)) -> Self {
+        let (method, raw_types, self_type) = data;
         let fn_name = method.sig.ident.clone();
         let (arguments, has_receiver) = method.sig.inputs.iter().fold(
             (Vec::<FnParameterFFI>::new(), false),
             |mut acc, input| {
                 match input {
                     syn::FnArg::Receiver(_receiver) => acc.1 = true,
-                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, raw_types.clone()))),
+                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, raw_types.clone(), Some(self_type.clone())))),
                 }
                 acc
             },
@@ -48,7 +48,7 @@ impl From<(&ImplItemMethod, Vec<Ident>)> for FnFFI {
         let return_type: Option<NativeTypeData> = match &method.sig.output {
             syn::ReturnType::Default => None,
             syn::ReturnType::Type(_token, ty) => Some(NativeTypeData::from(
-                UnparsedNativeTypeData::initial(*ty.clone(), raw_types.clone()),
+                UnparsedNativeTypeData::initial(*ty.clone(), raw_types, Some(self_type)),
             )),
         };
 
@@ -70,7 +70,7 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
             |mut acc, input| {
                 match input {
                     syn::FnArg::Receiver(_receiver) => acc.1 = true,
-                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, raw_types.clone()))),
+                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, raw_types.clone(), None))),
                 }
                 acc
             },
@@ -79,7 +79,7 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
         let return_type: Option<NativeTypeData> = match &method.sig.output {
             syn::ReturnType::Default => None,
             syn::ReturnType::Type(_token, ty) => Some(NativeTypeData::from(
-                UnparsedNativeTypeData::initial(*ty.clone(), raw_types.clone()),
+                UnparsedNativeTypeData::initial(*ty.clone(), raw_types, None),
             )),
         };
 
@@ -154,6 +154,8 @@ impl FnFFI {
                 };
                 let calling_arg = quote!(#symbols#name, );
 
+                println!("NATIVE TYPE DATA: {:?}", arg.native_type_data);
+                // For strings borrowed in the function call, we're converting them from the FFI string into `&String` (incorrectly marking the variable as borrowed). We need turn it into a real string, and then borrow (and in this case dereference) it when calling the native function. This should maybe be a whole separate function since we don't necessarily want an "owned" native type here?
                 let native_type = arg.native_type_data.owned_native_type();
                 let conversion = arg.native_type_data.argument_into_rust(&name, false);
                 // This needs to respect whether the data is borrowed for the native call.
@@ -235,24 +237,82 @@ impl FnFFI {
     /// Generates a consumer function for calling the foreign function produced by
     /// `self.generate_ffi(...)`.
     ///
-    pub fn generate_consumer(&self, module_name: &Ident) -> String {
+    pub(super) fn generate_consumer(&self, module_name: &Ident) -> String {
+        // Include the keyword `static` if this function doesn't take a receiver.
+        let static_keyword = if !self.has_receiver { "static" } else { "" };
         let (return_conversion, close_conversion, return_sig) =
             if let Some(return_type) = &self.return_type {
                 let ty = return_type.consumer_type(None);
                 (
-                    format!("{}.fromRust(", ty),
-                    format!(")"),
-                    format!("-> {}", ty),
+                    if return_type.is_result {
+                        "handle(result: ".to_string() 
+                   } else {
+                       format!("{}.fromRust(", ty) 
+                   },
+                   format!(")"),
+                   if return_type.is_result {
+                       format!("-> Result<{}, RustError>", ty)
+                   } else {
+                       format!("-> {}", ty)
+                   },
                 )
             } else {
                 (String::new(), String::new(), String::new())
             };
         format!(
             r#"
-    func {native_fn_name}({native_parameters}) {return_sig} {{
+    {static_keyword} func {native_fn_name}({native_parameters}) {return_sig} {{
         {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
     }}
             "#,
+            static_keyword = static_keyword,
+            native_fn_name = self.fn_name.to_string(),
+            native_parameters = self.consumer_parameters(),
+            return_sig = return_sig,
+            return_conversion = return_conversion,
+            ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
+            ffi_parameters = self.ffi_calling_arguments(),
+            close_conversion = close_conversion,
+        )
+    }
+
+    pub fn generate_consumer_extension(&self, header: &str, consumer_type: &str, module_name: &Ident, imports: Option<&str>) -> String {
+        // Include the keyword `static` if this function doesn't take a receiver.
+        let static_keyword = if !self.has_receiver { "static" } else { "" };
+        let (return_conversion, close_conversion, return_sig) =
+            if let Some(return_type) = &self.return_type {
+                let ty = return_type.consumer_type(None);
+                (
+                    if return_type.is_result {
+                         "handle(result: ".to_string() 
+                    } else {
+                        format!("{}.fromRust(", ty) 
+                    },
+                    format!(")"),
+                    if return_type.is_result {
+                        format!("-> Result<{}, RustError>", ty)
+                    } else {
+                        format!("-> {}", ty)
+                    },
+                )
+            } else {
+                (String::new(), String::new(), String::new())
+            };
+        format!(
+            r#"
+{header}
+{imports}
+
+extension {consumer_type} {{
+    {static_keyword} func {native_fn_name}({native_parameters}) {return_sig} {{
+        {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
+    }}
+}}
+            "#,
+            static_keyword = static_keyword,
+            header = header,
+            consumer_type = consumer_type,
+            imports = imports.unwrap_or_default(),
             native_fn_name = self.fn_name.to_string(),
             native_parameters = self.consumer_parameters(),
             return_sig = return_sig,
@@ -307,16 +367,16 @@ struct FnParameterFFI {
     original_type: Type,
 }
 
-impl From<(&PatType, Vec<Ident>)> for FnParameterFFI {
-    fn from(data: (&PatType, Vec<Ident>)) -> Self {
-        let (arg, raw_types) = data;
+impl From<(&PatType, Vec<Ident>, Option<Ident>)> for FnParameterFFI {
+    fn from(data: (&PatType, Vec<Ident>, Option<Ident>)) -> Self {
+        let (arg, raw_types, self_type) = data;
         let name = if let syn::Pat::Ident(pat) = &*arg.pat {
             pat.ident.clone()
         } else {
             panic!("Anonymous parameter (not allowed in Rust 2018): {:?}", arg);
         };
         let native_type_data =
-            NativeTypeData::from(UnparsedNativeTypeData::initial(*arg.ty.clone(), raw_types));
+            NativeTypeData::from(UnparsedNativeTypeData::initial(*arg.ty.clone(), raw_types, self_type));
         Self {
             name,
             native_type_data,

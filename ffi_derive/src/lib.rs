@@ -398,7 +398,7 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     });
     let out_dir = out_dir();
     let file_name = impl_ffi.consumer_file_name();
-    ffi_internals::write_consumer_file(&file_name, impl_ffi.generate_consumer(), &out_dir);
+    ffi_internals::write_consumer_file(&file_name, impl_ffi.generate_consumer(ffi_consumer::HEADER), &out_dir);
     let ffi = impl_ffi.generate_ffi();
 
     let output = ffi_internals::quote::quote! {
@@ -415,16 +415,20 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 #[proc_macro_attribute]
 pub fn expose_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = syn::parse_macro_input!(attr as syn::AttributeArgs);
-    let impl_attributes = parsing::ImplAttributes::from(args);
+    // let impl_attributes = parsing::ImplAttributes::from(args);
+    let fn_attributes = parsing::FnAttributes::from(args);
     let item_fn = syn::parse_macro_input!(item as syn::ItemFn);
 
-    let fn_ffi = FnFFI::from((&item_fn, impl_attributes.raw_types));
+    let fn_ffi = FnFFI::from((&item_fn, fn_attributes.raw_types));
     let module_name = format_ident!("{}_ffi", item_fn.sig.ident);
     let file_name = [&module_name.to_string(), ".swift"].join("");
     let out_dir = out_dir();
-    ffi_internals::write_consumer_file(&file_name, fn_ffi.generate_consumer(&module_name), &out_dir);
-    
-    
+
+    let common_import = option_env!("FFI_COMMON_FRAMEWORK")
+        .map(|f| format!("import {}", f))
+        .unwrap_or_default();
+    ffi_internals::write_consumer_file(&file_name, fn_ffi.generate_consumer_extension(ffi_consumer::HEADER, &fn_attributes.extend_type.to_string(), &module_name, Some(&common_import)), &out_dir);
+
     let ffi = fn_ffi.generate_ffi(&module_name, None, None);
 
     let output = quote::quote! {

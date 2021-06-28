@@ -53,7 +53,7 @@ impl From<ImplInputs> for ImplFFI {
             .iter()
             .filter_map(|item| {
                 if let syn::ImplItem::Method(method) = item {
-                    Some(FnFFI::from((method, inputs.raw_types.clone())))
+                    Some(FnFFI::from((method, inputs.raw_types.clone(), inputs.type_name.clone())))
                 } else {
                     None
                 }
@@ -120,7 +120,7 @@ impl ImplFFI {
     /// }
     /// ```
     ///
-    pub fn generate_consumer(&self) -> String {
+    pub fn generate_consumer(&self, header: &str) -> String {
         let additional_imports: Vec<String> = self
             .consumer_imports
             .iter()
@@ -144,6 +144,7 @@ impl ImplFFI {
             .collect();
         format!(
             r#"
+{header}
 {common_framework}
 {additional_imports}
 
@@ -151,6 +152,7 @@ public extension {native_type} {{
     {functions}
 }}
             "#,
+            header = header,
             common_framework = option_env!("FFI_COMMON_FRAMEWORK")
                 .map(|f| format!("import {}", f))
                 .unwrap_or_default(),
