@@ -6,8 +6,8 @@
 use crate::{parsing, parsing::{FieldAttributes, WrappingType}};
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
-use quote::{ToTokens, format_ident, quote};
-use std::{any::Any, convert::TryFrom};
+use quote::{format_ident, quote};
+use std::{convert::TryFrom};
 use syn::{Ident, Type};
 
 static STRING: &str = "String";
@@ -334,7 +334,7 @@ impl NativeTypeData {
 /// use ffi_internals::native_type_data::{UnparsedNativeTypeData, NativeTypeData, NativeType};
 ///
 /// let ty: syn::Type = syn::parse_str("Result<Foo>").unwrap();
-/// let initial = UnparsedNativeTypeData::initial(ty, vec![]);
+/// let initial = UnparsedNativeTypeData::initial(ty, vec![], None);
 /// let native_type_data = NativeTypeData::from(initial);
 /// assert_eq!(native_type_data.native_type, NativeType::Boxed(format_ident!("Foo")));
 /// assert_eq!(native_type_data.is_result, true);
@@ -623,8 +623,37 @@ impl NativeTypeData {
         let t = if self.is_vec {
             quote!(Vec::<#t>)
         } else {
+            t
+        };
+        let t = if self.is_option { quote!(Option::<#t>) } else { t };
+        t
+        // let t = if self.is_vec {
+        //     quote!(Vec::<#t>)
+        // } else {
+        //     quote!(#t)
+        // };
+        // let t = if self.is_borrow { quote!(&#t) } else { t };
+        // let t = if self.is_option { quote!(Option::<#t>) } else { t };
+        // t
+    }
+
+    pub fn native_type(&self) -> TokenStream {
+        let t = match &self.native_type {
+            NativeType::Boxed(inner) => quote!(#inner),
+            NativeType::DateTime => quote!(datetime),
+            NativeType::Raw(inner) => quote!(#inner),
+            NativeType::String => quote!(String),
+            NativeType::Uuid => quote!(Uuid),
+        };
+        let t = if self.is_vec {
+            quote!(Vec::<#t>)
+        } else {
             if self.is_borrow {
-                quote!(&#t)
+                if self.native_type == NativeType::String {
+                    quote!(&str)
+                } else { 
+                    quote!(&#t)
+                }
             } else {
                 t
             }

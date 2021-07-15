@@ -154,13 +154,13 @@ impl FnFFI {
                 };
                 let calling_arg = quote!(#symbols#name, );
 
-                println!("NATIVE TYPE DATA: {:?}", arg.native_type_data);
-                // For strings borrowed in the function call, we're converting them from the FFI string into `&String` (incorrectly marking the variable as borrowed). We need turn it into a real string, and then borrow (and in this case dereference) it when calling the native function. This should maybe be a whole separate function since we don't necessarily want an "owned" native type here?
-                let native_type = arg.native_type_data.owned_native_type();
+                let native_type = arg.native_type_data.native_type();
                 let conversion = arg.native_type_data.argument_into_rust(&name, false);
-                // This needs to respect whether the data is borrowed for the native call.
-                // Right now wise_units gets `*Box::from_raw(lhs)`, but it just needs to borrow the
-                // deref'd value, so it ought to be `&*lhs`.
+                let conversion = if arg.native_type_data.is_borrow && arg.native_type_data.native_type == NativeType::String {
+                    quote!(&*#conversion)
+                } else {
+                    conversion
+                };
                 let assignment_and_conversion = quote!(let #name: #native_type = #conversion;);
                 acc.0.extend(signature_parameter);
                 acc.1.extend(calling_arg);

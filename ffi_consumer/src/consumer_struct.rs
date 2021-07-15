@@ -7,6 +7,7 @@
 use ffi_internals::{
     native_type_data,
     struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
+    parsing::CustomAttributes,
     heck::{CamelCase, MixedCase},
     syn::{Ident, Path, Type}
 };
@@ -39,6 +40,10 @@ pub struct ConsumerStruct {
     /// The name of the Rust type's clone function.
     ///
     pub clone_fn_name: String,
+    /// True if the Rust initializer is failable. This is only relevant for types exposed through a
+    /// custom (i.e., non-derived) FFI implementation.
+    ///
+    failable_init: bool,
 }
 
 impl ConsumerStruct {
@@ -87,13 +92,7 @@ impl ConsumerStruct {
 public final class {class} {{
     internal let pointer: OpaquePointer
 
-    public init(
-{args}
-    ) {{
-        self.pointer = {ffi_init}(
-{ffi_args}
-        )
-    }}
+    {init_impl}
 
     private init(_ pointer: OpaquePointer) {{
         self.pointer = pointer
@@ -110,9 +109,7 @@ public final class {class} {{
                 .unwrap_or_default(),
             additional_imports = additional_imports.join("\n"),
             class = self.type_name,
-            args = self.consumer_init_args,
-            ffi_init = self.init_fn_name,
-            ffi_args = self.ffi_init_args,
+            init_impl = self.init_impl(),
             free = self.free_fn_name,
             getters = self.consumer_getters
         )
@@ -198,6 +195,43 @@ extension {}: NativeArrayData {{
             self.array_name()
         )
     }
+
+    fn init_impl(&self) -> String {
+        if self.failable_init {
+            format!(
+                r#"
+    internal init?(
+        {args}
+    ) {{
+        guard let pointer = {ffi_init}(
+            {ffi_args}
+        ) else {{
+            return nil
+        }}
+        self.pointer = pointer
+    }}
+                "#,
+                args = self.consumer_init_args,
+                ffi_init = self.init_fn_name,
+                ffi_args = self.ffi_init_args,
+            )
+        } else {
+            format!(
+                r#"
+    public init(
+        {args}
+    ) {{
+        self.pointer = {ffi_init}(
+            {ffi_args}
+        )
+    }}
+                "#,
+                args = self.consumer_init_args,
+                ffi_init = self.init_fn_name,
+                ffi_args = self.ffi_init_args,
+            )
+        }
+    }
 }
 
 impl ConsumerStruct {
@@ -207,6 +241,7 @@ impl ConsumerStruct {
     pub fn custom(
         type_name: String,
         required_imports: Vec<Path>,
+        custom_attributes: CustomAttributes,
         init_fn_name: String,
         init_args: &[(Ident, Type)],
         getters: &[(Ident, Type)],
@@ -220,6 +255,7 @@ impl ConsumerStruct {
                 // Swift rejects trailing commas on argument lists.
                 let trailing_punctuation = if index < arg_count - 1 { ",\n" } else { "" };
                 // This looks like `foo: Bar,`.
+                // TODO: This is where we get the expression: String? for the Unit init. Wrong.
                 let consumer_type =
                     native_type_data::native_type_data_for_custom(t).consumer_type(None);
                 acc.0.push_str(&format!(
@@ -239,7 +275,21 @@ impl ConsumerStruct {
         );
 
         let type_prefix = format!("get_{}_", type_name);
+        let failable_fns: Vec<&syn::Ident> = custom_attributes
+            .failable_fns
+            .iter()
+            .map(|x| &x.segments.last().unwrap().ident)
+            .collect();
         let consumer_getters = getters.iter().fold(String::new(), |mut acc, (i, t)| {
+            // We're going to give things an internal access modifier if they're failable on the
+            // Rust side. This will require some additional (handwritten) Swift code for error
+            // handling before they can be accessed outside of the framework that contains the
+            // generated code.
+            let access_modifier = if failable_fns.contains(&i) {
+                "internal"
+            } else {
+                "public"
+            };
             let consumer_type =
                 native_type_data::native_type_data_for_custom(t).consumer_type(None);
             let consumer_getter_name = i
@@ -252,10 +302,11 @@ impl ConsumerStruct {
 
             acc.push_str(&format!(
                 "
-    public var {}: {} {{
+    {} var {}: {} {{
         {}.fromRust({}(pointer))
     }}
     ",
+                access_modifier,
                 consumer_getter_name,
                 consumer_type,
                 consumer_type,
@@ -273,6 +324,7 @@ impl ConsumerStruct {
             init_fn_name,
             free_fn_name,
             clone_fn_name,
+            failable_init: custom_attributes.failable_init,
         }
     }
 }
@@ -290,6 +342,7 @@ impl From<&StructFFI> for ConsumerStruct {
             init_fn_name: struct_ffi.init_fn_name().to_string(),
             free_fn_name: struct_ffi.free_fn_name().to_string(),
             clone_fn_name: struct_ffi.clone_fn_name().to_string(),
+            failable_init: false,
         }
     }
 }

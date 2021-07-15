@@ -17,7 +17,7 @@ mod struct_attributes;
 pub use field_attributes::FieldAttributes;
 pub use fn_attributes::FnAttributes;
 pub use impl_attributes::ImplAttributes;
-pub use struct_attributes::StructAttributes;
+pub use struct_attributes::{CustomAttributes, StructAttributes};
 
 /// If the path of the `Attribute` parameter is `"ffi"`, this will return a Vec of the attribute's
 /// `NestedMeta` data. If other types of data are found in an `"ffi"` attribute, this will panic.

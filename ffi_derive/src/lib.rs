@@ -229,7 +229,7 @@
 //!
 //! ## Deriving on an impl
 //!
-//! We also support generating an FFI for trait implementations with the `expose_items` attribute
+//! We also support generating an FFI for trait implementations with the `expose_impl` attribute
 //! macro.
 //!
 //! Couple of limitations here:
@@ -245,11 +245,11 @@
 //! just need to provide `"crate::animals::cats::meow_ffi", "utilities::sound::volume_ffi"` to the
 //! attribute macro.
 //!
-//! Invoking the `expose_items` macro looks like this:
+//! Invoking the `expose_impl` macro looks like this:
 //! ```ignore
 //! use crate::animals::cats::Meow;
 //! use utilities::sound::Volume;
-//! #[ffi_derive::expose_items(animals::cats::meow_ffi::FFIArrayMeow)]
+//! #[ffi_derive::expose_impl(animals::cats::meow_ffi::FFIArrayMeow)]
 //! impl Meows for Cat {
 //!     pub fn meow(&self, volume: Option<Volume>, count: u8) -> Vec<Meow> { ... }
 //! }
@@ -286,6 +286,14 @@
 mod enum_ffi;
 mod struct_ffi;
 
+// TODO: Implement support for generating optional initializers for the consumer. We're producing a `Unit(expression: String?)` init from wise_units::unit::custom_ffi, but the initializer can fail on a bad unit.
+
+// TODO: We may also want to replace getter variables with getter functions that return results when nil is an error. See getUnitExpression -- it will only be nil if there's an error, and returning a failure is cleaner than handling nil everywhere.
+
+// TODO: Rust functions that take a borrowed reference (like the wise_units ops) are being called on the consumer side with a cloned copy via the `toRust` method. This is inefficient and currently leaks, since nothing ever frees those cloned and borrowed resources. We should 1) rename that to `cloneIntoRust` or something along those lines, and 2) differentiate between borrowed and non-borrowed calls. We don't have to implement a borrow system, but we need to preserve those semantics in the client-side calls.
+
+use std::ops::Deref;
+
 use ffi_internals::{
     alias_resolution,
     impl_internals::{
@@ -321,11 +329,12 @@ fn impl_ffi_macro(ast: DeriveInput) -> TokenStream {
     let struct_attributes = parsing::StructAttributes::from(&*ast.attrs);
     match ast.data {
         Data::Struct(data) => {
-            if let Some(custom_module_path) = struct_attributes.custom_path {
+            if let Some(custom_attributes) = struct_attributes.custom_attributes {
                 struct_ffi::custom(
                     &type_name,
                     &module_name,
-                    &format!("{}/{}", crate_root, custom_module_path),
+                    &crate_root,
+                    custom_attributes,
                     struct_attributes.required_imports,
                     &out_dir,
                 )
@@ -384,6 +393,12 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     );
     let type_name = if let Type::Path(ty) = &*item_impl.self_ty {
         ty.path.segments.last().unwrap().ident.clone()
+    } else if let syn::Type::Reference(r) = &*item_impl.self_ty {
+        if let syn::Type::Path(ty) = r.elem.deref() {
+            ty.path.segments.last().unwrap().ident.clone()
+        } else {
+            panic!("Could not find self type for impl: {:?}", r);    
+        }
     } else {
         panic!("Could not find self type for impl: {:?}", item_impl);
     };

@@ -5,6 +5,7 @@
 use ffi_consumer::consumer_struct::ConsumerStruct;
 use ffi_internals::{
     parsing,
+    parsing::CustomAttributes,
     struct_internals::struct_ffi::{StructFFI, StructInputs},
     quote::{format_ident, quote},
     syn::{DataStruct, Ident, Path},
@@ -16,19 +17,22 @@ use std::convert::TryFrom;
 pub(super) fn custom(
     type_name: &Ident,
     module_name: &Ident,
-    custom_path: &str,
+    crate_root: &str,
+    custom_attributes: CustomAttributes,
     required_imports: Vec<Path>,
     out_dir: &str,
 ) -> TokenStream {
     let init_fn_name = format_ident!("{}_init", &type_name.to_string().to_snake_case());
     let free_fn_name = format_ident!("{}_free", &type_name.to_string().to_snake_case());
     let clone_fn_name = format_ident!("clone_{}", &type_name.to_string().to_snake_case());
+    let custom_path = &format!("{}/{}", crate_root, custom_attributes.path);
     let custom_ffi =
         parsing::parse_custom_ffi_type(custom_path, &type_name.to_string(), &init_fn_name);
 
     let consumer = ConsumerStruct::custom(
         type_name.to_string(),
         required_imports,
+        custom_attributes,
         init_fn_name.to_string(),
         custom_ffi.0.as_ref(),
         custom_ffi.1.as_ref(),
