@@ -2,8 +2,8 @@
 // differently from other types. Normal reference types (i.e., complex objects like an
 // `Organization`) are initialized with a reference to the Rust object that is **NOT** dropped on
 // init; instead, we tell Rust we're done when the Swift object is deinitialized. When we retrieve a
-// string from Rust, we a native type like normal, but we also want to tell Rust to clean its side
-// up (because we can't tell it that during deinitialization, since we don't know whether a
+// string from Rust, we want a native type like normal, but we also want to tell Rust to clean its
+// side up (because we can't tell it that during deinitialization, since we don't know whether a
 // particular `String` came from Swift or Rust). Normally that's fine, but when we're intializing an
 // `Array` on the Swift side, we always tell Rust that we're done with it immediately afterward 
 // (same reason as above with `String`), which will tell Rust to deallocate the memory for that
@@ -12,18 +12,18 @@
 // `Array`. So, simple solution is to handle Swift `[String].fromRust()`` differently.
 
 extension FFIArrayString: FFIArray {
-    typealias Value = UnsafePointer<CChar>?
+    public typealias Value = UnsafePointer<CChar>?
 
-    static func from(ptr: UnsafePointer<Value>?, len: Int) -> FFIArrayString {
+    public static func from(ptr: UnsafePointer<Value>?, len: Int) -> FFIArrayString {
         ffi_array_string_init(ptr, len)
     }
 
-    static func free(_ array: FFIArrayString) {
+    public static func free(_ array: FFIArrayString) {
         ffi_array_string_free(array)
     }
 }
 
-extension String {
+public extension String {
     func toRust() -> UnsafePointer<CChar>? {
         (self as NSString).utf8String
     }
@@ -35,7 +35,7 @@ extension String {
     }
 }
 
-extension Array where Element == String {
+public extension Array where Element == String {
     func toRust() -> FFIArrayString {
         let ffiArray = map { $0.toRust() }
         let len = ffiArray.count
@@ -53,7 +53,7 @@ extension Array where Element == String {
     }
 }
 
-extension Optional where Wrapped == String {
+public extension Optional where Wrapped == String {
     static func fromRust(_ foreignObject: UnsafePointer<CChar>?) -> Self {
         guard let foreignObject = foreignObject else {
             return nil
@@ -69,7 +69,7 @@ extension Optional where Wrapped == String {
     }
 }
 
-extension Optional where Wrapped == [String] {
+public extension Optional where Wrapped == [String] {
     static func from(ptr: UnsafePointer<UnsafePointer<CChar>?>, len: Int) -> FFIArrayString {
         ffi_array_string_init(ptr, len)
     }

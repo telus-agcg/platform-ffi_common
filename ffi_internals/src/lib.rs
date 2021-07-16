@@ -5,11 +5,29 @@
 //! they can be shared between the codegen crates without needing to expose them in `ffi_common`,
 //! which has more general FFI stuff.
 //!
+#![warn(
+    clippy::all,
+    clippy::correctness,
+    clippy::nursery,
+    clippy::pedantic,
+    future_incompatible,
+    missing_copy_implementations,
+    // missing_docs,
+    nonstandard_style,
+    trivial_casts,
+    trivial_numeric_casts,
+    unreachable_pub,
+    unused_extern_crates,
+    unused_qualifications,
+    unused_results,
+    variant_size_differences
+)]
 
-pub mod field_ffi;
+pub mod alias_resolution;
+pub mod impl_internals;
 pub mod native_type_data;
 pub mod parsing;
-pub mod struct_ffi;
+pub mod struct_internals;
 
 /// Creates a consumer directory at `out_dir` and returns its path.
 ///
@@ -48,10 +66,10 @@ pub fn consumer_type_for(native_type: &str, option: bool) -> String {
     converted
 }
 
-pub fn write_consumer_files(type_name: &syn::Ident, consumer: String, out_dir: &str) {
+pub fn write_consumer_file(file_name: &str, contents: String, out_dir: &str) {
     let consumer_dir = create_consumer_dir(out_dir)
         .unwrap_or_else(|e| panic!("Failed to create dir at {} with error {}.", out_dir, e));
-    let output_file = format!("{}/{}.swift", consumer_dir, type_name.to_string());
-    std::fs::write(&output_file, consumer)
+    let output_file = format!("{}/{}", consumer_dir, file_name);
+    std::fs::write(&output_file, contents)
         .unwrap_or_else(|e| panic!("Failed to write {} with error {}", output_file, e));
 }

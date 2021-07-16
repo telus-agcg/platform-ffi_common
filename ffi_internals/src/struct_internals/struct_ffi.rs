@@ -3,19 +3,17 @@
 //! consumer implementations.
 //!
 
-use crate::field_ffi::FieldFFI;
+use crate::struct_internals::field_ffi::FieldFFI;
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use std::{
-    collections::{HashMap, HashSet},
-    convert::TryFrom,
-};
-use syn::{Fields, Ident};
+use std::{collections::HashSet, convert::TryFrom};
+use syn::{Fields, Ident, Path};
 
 pub struct StructFFI {
     module: Ident,
     pub name: Ident,
+    pub required_imports: Vec<Path>,
     pub fields: Vec<FieldFFI>,
     init_arguments: TokenStream,
     assignment_expressions: TokenStream,
@@ -43,7 +41,7 @@ impl StructFFI {
             .as_slice()
             .iter()
             .filter_map(|f| f.attributes.expose_as.as_ref())
-            .collect::<HashSet<&syn::Path>>()
+            .collect::<HashSet<&Path>>()
             .iter()
             .fold(quote!(), |mut acc, path| {
                 acc.extend(quote!(use #path;));
@@ -56,10 +54,11 @@ pub struct StructInputs {
     pub module_name: Ident,
     pub type_name: Ident,
     pub data: syn::DataStruct,
-    pub alias_map: HashMap<Ident, Ident>,
+    pub alias_modules: Vec<String>,
+    pub required_imports: Vec<Path>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum DeriveError {
     UnnamedFields,
     UnitFields,
@@ -78,7 +77,7 @@ impl TryFrom<&StructInputs> for StructFFI {
         }
         .named
         .iter()
-        .map(|field| FieldFFI::from((derive.type_name.clone(), field, &derive.alias_map)))
+        .map(|field| FieldFFI::from((derive.type_name.clone(), field, &*derive.alias_modules)))
         .collect();
 
         let (init_arguments, assignment_expressions, getter_fns) =
@@ -96,6 +95,7 @@ impl TryFrom<&StructInputs> for StructFFI {
         Ok(Self {
             module,
             name,
+            required_imports: derive.required_imports.clone(),
             fields,
             init_arguments,
             assignment_expressions,

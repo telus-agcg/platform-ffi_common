@@ -4,48 +4,15 @@
 //!
 
 use crate::{
+    alias_resolution,
     native_type_data::{Context, NativeType, NativeTypeData},
     parsing,
 };
 use heck::SnakeCase;
+use parsing::FieldAttributes;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use std::collections::HashMap;
-use syn::{Field, Ident, Path};
-
-/// Field-level FFI helper attributes.
-///
-#[derive(Debug, Clone)]
-pub struct FieldAttributes {
-    /// If `Some`, a path to the type that this field should be exposed as. This type must meet
-    /// some prerequisites:
-    /// 1. It must be FFI-safe (either because it's a primitive value or derives its own FFI with
-    /// `ffi_derive`).
-    /// 1. It must have a `From<T> for U` impl, where `T` is the native type of the field and `U` is
-    /// the type referenced by the `expose_as` `Path`.
-    ///
-    /// This is necessary for exposing remote types where we want to derive an FFI, but don't
-    /// control the declaration of the type.
-    ///
-    pub expose_as: Option<Path>,
-
-    /// Whether the field's data should be exposed as a raw value (i.e., not `Box`ed). This should
-    /// only be applied to fields whose type is `repr(C)` and safe to expose over FFI.
-    ///
-    pub raw: bool,
-}
-
-impl FieldAttributes {
-    /// If there's an `expose_as` attribute, get the ident of the last segment in the path (i.e.,
-    /// the ident of the type being referenced).
-    ///
-    pub fn expose_as_ident(&self) -> Option<&Ident> {
-        self.expose_as
-            .as_ref()
-            .map(|p| p.segments.last().map(|s| &s.ident))
-            .flatten()
-    }
-}
+use syn::{Field, Ident};
 
 /// Represents the components of the generated FFI for a field.
 #[derive(Debug)]
@@ -201,128 +168,31 @@ impl FieldFFI {
     #[must_use]
     pub fn assignment_expression(&self) -> TokenStream {
         let field_name = &self.field_name;
-
-        // All FFIArrayT types have a `From<FFIArrayT> for Vec<T>` impl, so we can treat them all
-        // the same for the sake of native Rust assignment.
-        if self.native_type_data.vec {
-            return quote!(#field_name: #field_name.into(),);
-        }
-
-        match self.native_type_data.native_type {
-            NativeType::Boxed(_) => {
-                if self.attributes.expose_as.is_some() {
-                    // The expose_as type will take care of its own optionality and cloning; all
-                    // we need to do is make sure the pointer is safe (if this field is optional),
-                    // then let it convert with `into()`.
-                    if self.native_type_data.option {
-                        quote! {
-                            #field_name: unsafe {
-                                if #field_name.is_null() {
-                                    None
-                                } else {
-                                    (*Box::from_raw(#field_name)).into()
-                                }
-                            },
-                        }
-                    } else {
-                        quote! {
-                            #field_name: unsafe { (*Box::from_raw(#field_name)).into() },
-                        }
-                    }
-                } else if self.native_type_data.option {
-                    quote! {
-                        #field_name: unsafe {
-                            if #field_name.is_null() {
-                                None
-                            } else {
-                                Some(*Box::from_raw(#field_name))
-                            }
-                        },
-                    }
-                } else {
-                    quote!(#field_name: unsafe { *Box::from_raw(#field_name) },)
-                }
-            }
-            NativeType::DateTime => {
-                if self.native_type_data.option {
-                    quote! {
-                        #field_name: unsafe {
-                            if #field_name.is_null() {
-                                None
-                            } else {
-                                Some((&*Box::from_raw(#field_name)).into())
-                            }
-                        },
-                    }
-                } else {
-                    quote!(#field_name: unsafe { (&*Box::from_raw(#field_name)).into() },)
-                }
-            }
-            NativeType::Raw(_) => {
-                if self.native_type_data.option {
-                    quote! {
-                        #field_name: unsafe {
-                            if #field_name.is_null() {
-                                None
-                            } else {
-                                Some(*Box::from_raw(#field_name))
-                            }
-                        },
-                    }
-                } else {
-                    quote!(#field_name: #field_name,)
-                }
-            }
-            NativeType::String => {
-                if self.native_type_data.option {
-                    quote! {
-                        #field_name: if #field_name.is_null() {
-                            None
-                        } else {
-                            Some(ffi_common::string::string_from_c(#field_name))
-                        },
-                    }
-                } else {
-                    quote!(#field_name: ffi_common::string::string_from_c(#field_name),)
-                }
-            }
-            NativeType::Uuid => {
-                if self.native_type_data.option {
-                    quote! {
-                        #field_name: if #field_name.is_null() {
-                            None
-                        } else {
-                            Some(ffi_common::string::uuid_from_c(#field_name))
-                        },
-                    }
-                } else {
-                    quote!(#field_name: ffi_common::string::uuid_from_c(#field_name),)
-                }
-            }
-        }
+        let conversion = self
+            .native_type_data
+            .argument_into_rust(&self.field_name, self.attributes.expose_as.is_some());
+        quote!(#field_name: #conversion,)
     }
 }
 
-impl From<(Ident, &Field, &HashMap<Ident, Ident>)> for FieldFFI {
-    fn from(inputs: (Ident, &Field, &HashMap<Ident, Ident>)) -> Self {
-        let (type_name, field, alias_map) = inputs;
+impl From<(Ident, &Field, &[String])> for FieldFFI {
+    fn from(inputs: (Ident, &Field, &[String])) -> Self {
+        let (type_name, field, alias_modules) = inputs;
         let field_name = field
             .ident
             .as_ref()
-            .unwrap_or_else(|| {
-                panic!(format!(
-                    "Expected field: {:?} to have an identifier.",
-                    &field
-                ))
-            })
+            .unwrap_or_else(|| panic!("Expected field: {:?} to have an identifier.", &field))
             .clone();
-        let attributes = parsing::parse_field_attributes(&field.attrs);
+        let attributes = FieldAttributes::from(&*field.attrs);
         let (wrapping_type, unaliased_field_type) = match parsing::get_segment_for_field(&field.ty)
         {
             Some(segment) => {
                 let (ident, wrapping_type) =
                     parsing::separate_wrapping_type_from_inner_type(segment);
-                (wrapping_type, resolve_type_alias(&ident, alias_map))
+                (
+                    wrapping_type,
+                    alias_resolution::resolve_type_alias(&ident, alias_modules, None).unwrap(),
+                )
             }
             None => panic!("No path segment (field without a type?)"),
         };
@@ -342,17 +212,5 @@ impl From<(Ident, &Field, &HashMap<Ident, Ident>)> for FieldFFI {
             native_type_data,
             attributes,
         }
-    }
-}
-
-/// If `field_type` is an alias in `alias_map`, returns the underlying type (resolving aliases
-/// recursively, so if someone is weird and defines typealiases over other typealiases, we'll still
-/// find the underlying type, as long as they were all specified in the `alias_paths` helper
-/// attribute).
-///
-fn resolve_type_alias(field_type: &Ident, alias_map: &HashMap<Ident, Ident>) -> Ident {
-    match alias_map.get(field_type) {
-        Some(alias) => resolve_type_alias(alias, alias_map),
-        None => field_type.clone(),
     }
 }
