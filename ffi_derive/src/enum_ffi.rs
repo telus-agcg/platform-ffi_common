@@ -23,8 +23,7 @@ pub(super) fn build(module_name: &Ident, type_name: &Ident, out_dir: &str) -> To
     quote! {
         #[allow(missing_docs)]
         pub mod #module_name {
-            use ffi_common::{error, declare_value_type_ffi};
-            use paste::paste;
+            use ffi_common::{error, declare_value_type_ffi, paste};
             use super::*;
 
             #[no_mangle]

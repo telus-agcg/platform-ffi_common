@@ -26,7 +26,7 @@ pub mod datetime;
 pub mod macros;
 pub mod string;
 
-use paste::paste;
+pub use paste::paste;
 
 declare_value_type_ffi!(bool, u8, u16, u32, u64, i8, i16, i32, i64, f32, f64);
 

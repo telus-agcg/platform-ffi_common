@@ -4,7 +4,6 @@
 
 use crate::declare_opaque_type_ffi;
 use chrono::NaiveDateTime;
-use paste::paste;
 
 /// Represents a UTC timestamp in a way that's safe to transfer across the FFI boundary.
 #[derive(Debug, Clone, Copy, Default)]
