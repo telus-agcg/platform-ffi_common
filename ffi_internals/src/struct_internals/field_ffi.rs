@@ -138,7 +138,7 @@ impl FieldFFI {
         };
 
         quote! {
-            paste! {
+            ffi_common::paste! {
                 #[no_mangle]
                 #[doc = "Get `" #field_name "` for this `" #type_name"`."]
                 pub unsafe extern "C" fn #getter_name(

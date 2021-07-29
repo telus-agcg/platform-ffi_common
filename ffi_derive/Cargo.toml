@@ -13,7 +13,6 @@ ffi_common = { version = "0.3", registry = "agrian-registry" }
 ffi_consumer = { version = "0.3", registry = "agrian-registry" }
 ffi_internals = { version = "0.3", registry = "agrian-registry" }
 heck = "0.3"
-paste = "1.0"
 proc-macro2 = "1.0"
 quote = "1.0"
 syn = { version = "1.0", features = ["full"] }
