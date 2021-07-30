@@ -290,17 +290,17 @@ use ffi_internals::{
     alias_resolution,
     impl_internals::impl_ffi::{ImplFFI, ImplInputs},
     parsing,
+    quote::{format_ident, ToTokens},
+    syn::{parse_macro_input, AttributeArgs, Data, DeriveInput, ItemImpl, ItemMod, Type},
+    heck::SnakeCase,
 };
-use heck::SnakeCase;
 use proc_macro::TokenStream;
-use quote::{format_ident, ToTokens};
-use syn::{parse_macro_input, Data, DeriveInput, ItemMod};
 
 /// Derive an FFI for a native type definition.
 ///
 #[proc_macro_derive(FFI, attributes(ffi))]
 pub fn ffi_derive(input: TokenStream) -> TokenStream {
-    let ast: DeriveInput = syn::parse(input).unwrap();
+    let ast: DeriveInput = ffi_internals::syn::parse(input).unwrap();
 
     // Build the trait implementation
     impl_ffi_macro(ast)
@@ -371,15 +371,15 @@ pub fn alias_resolution(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 #[proc_macro_attribute]
 pub fn expose_items(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args = syn::parse_macro_input!(attr as syn::AttributeArgs);
+    let args = parse_macro_input!(attr as AttributeArgs);
     let impl_attributes = parsing::ImplAttributes::from(args);
-    let item_impl = syn::parse_macro_input!(item as syn::ItemImpl);
+    let item_impl = parse_macro_input!(item as ItemImpl);
 
     let trait_name = item_impl.trait_.as_ref().map_or_else(
         || panic!("No trait info found"),
         |t| t.1.segments.last().unwrap().ident.clone(),
     );
-    let type_name = if let syn::Type::Path(ty) = &*item_impl.self_ty {
+    let type_name = if let Type::Path(ty) = &*item_impl.self_ty {
         ty.path.segments.last().unwrap().ident.clone()
     } else {
         panic!("Could not find self type for impl: {:?}", item_impl);
@@ -397,7 +397,7 @@ pub fn expose_items(attr: TokenStream, item: TokenStream) -> TokenStream {
     ffi_internals::write_consumer_file(&file_name, impl_ffi.generate_consumer(), &out_dir);
     let ffi = impl_ffi.generate_ffi();
 
-    let output = quote::quote! {
+    let output = ffi_internals::quote::quote! {
         #item_impl
 
         #ffi

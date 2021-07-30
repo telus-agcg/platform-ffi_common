@@ -30,6 +30,11 @@ pub mod native_type_data;
 pub mod parsing;
 pub mod struct_internals;
 
+// Reexports
+pub use heck;
+pub use syn;
+pub use quote;
+
 /// Creates a consumer directory at `out_dir` and returns its path.
 ///
 /// # Errors
