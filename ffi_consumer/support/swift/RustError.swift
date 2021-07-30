@@ -1,5 +1,6 @@
 import Foundation
 
+// MARK: - RustError
 public struct RustError: Error {
     private static let unknownError = NSLocalizedString(
         "Unknown error",
@@ -21,9 +22,26 @@ public struct RustError: Error {
     }
 }
 
-public func handle<T: NativeData>(result: T.ForeignType?) -> Result<T, RustError> {
+// MARK: - LocalizedError
+extension RustError: LocalizedError {
+    public var errorDescription: String? { errorMessage }
+}
+
+// MARK: - Result handlers
+public func handle<T: NativeData>(
+    result: T.ForeignType
+) -> Result<T, RustError> where T.ForeignType == Optional<OpaquePointer> {
     guard let result = result else {
         return .failure(RustError.getLastError())
     }
     return .success(T.fromRust(result))
+}
+
+public func handle<T: NativeArrayData>(
+    result: T.FFIArrayType
+) -> Result<[T], RustError> where T.ForeignType == T.FFIArrayType.Value {
+    guard result.ptr != nil else {
+        return .failure(RustError.getLastError())
+    }
+    return .success([T].fromRust(result))
 }

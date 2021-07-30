@@ -286,13 +286,7 @@
 mod enum_ffi;
 mod struct_ffi;
 
-// TODO: Implement support for generating optional initializers for the consumer. We're producing a `Unit(expression: String?)` init from wise_units::unit::custom_ffi, but the initializer can fail on a bad unit.
-
-// TODO: We may also want to replace getter variables with getter functions that return results when nil is an error. See getUnitExpression -- it will only be nil if there's an error, and returning a failure is cleaner than handling nil everywhere.
-
 // TODO: Rust functions that take a borrowed reference (like the wise_units ops) are being called on the consumer side with a cloned copy via the `toRust` method. This is inefficient and currently leaks, since nothing ever frees those cloned and borrowed resources. We should 1) rename that to `cloneIntoRust` or something along those lines, and 2) differentiate between borrowed and non-borrowed calls. We don't have to implement a borrow system, but we need to preserve those semantics in the client-side calls.
-
-use std::ops::Deref;
 
 use ffi_internals::{
     alias_resolution,
@@ -309,6 +303,11 @@ use proc_macro::TokenStream;
 
 /// Derive an FFI for a native type definition.
 ///
+/// # Panics
+/// 
+/// Panics if invoked for an unsupported type (such as a union or non-repr(C) enum), or if any 
+/// unsupported types are encountered when processing `input`.
+/// 
 #[proc_macro_derive(FFI, attributes(ffi))]
 pub fn ffi_derive(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = ffi_internals::syn::parse(input).unwrap();
@@ -368,6 +367,11 @@ fn out_dir() -> String {
 
 /// Parses a module that contains typealiases and stores that information for other `ffi_derive` calls
 /// to use later in resolving aliases.
+/// 
+/// # Panics
+/// 
+/// Panics if this is not invoked on a module, or if the resolution JSON file cannot be read or 
+/// written to.
 ///
 #[proc_macro_attribute]
 pub fn alias_resolution(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -381,6 +385,12 @@ pub fn alias_resolution(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Parses an impl and produces a module exposing that impl's functions over FFI.
 ///
+/// # Panics
+/// 
+/// Panics if invoked on an unsupported impl, such as: one that doesn't implement a trait, one 
+/// that doesn't have a `Self` type, or one whose types use aliases that have not been marked 
+/// `derive(ffi_derive::alias_resolution)`.
+/// 
 #[proc_macro_attribute]
 pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as AttributeArgs);
@@ -394,7 +404,7 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let type_name = if let Type::Path(ty) = &*item_impl.self_ty {
         ty.path.segments.last().unwrap().ident.clone()
     } else if let syn::Type::Reference(r) = &*item_impl.self_ty {
-        if let syn::Type::Path(ty) = r.elem.deref() {
+        if let syn::Type::Path(ty) = &*r.elem {
             ty.path.segments.last().unwrap().ident.clone()
         } else {
             panic!("Could not find self type for impl: {:?}", r);    

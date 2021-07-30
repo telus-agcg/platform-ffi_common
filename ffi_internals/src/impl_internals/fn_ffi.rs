@@ -4,9 +4,11 @@
 //!
 
 use crate::{native_type_data::{Context, NativeType, NativeTypeData, UnparsedNativeTypeData}, parsing::FieldAttributes};
+use lazy_static::__Deref;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, ImplItemMethod, ItemFn, PatType, Type};
+use std::collections::HashMap;
 
 /// A representation of a Rust fn that can be used to generate an FFI and consumer code for
 /// calling that FFI.
@@ -30,26 +32,50 @@ pub struct FnFFI {
     pub return_type: Option<NativeTypeData>,
 }
 
-impl From<(&ImplItemMethod, Vec<Ident>, Ident)> for FnFFI {
-    fn from(data: (&ImplItemMethod, Vec<Ident>, Ident)) -> Self {
-        let (method, raw_types, self_type) = data;
-        let fn_name = method.sig.ident.clone();
-        let (arguments, has_receiver) = method.sig.inputs.iter().fold(
+pub struct FnFFIInputs<'a> {
+    pub method: &'a ImplItemMethod,
+    pub raw_types: Vec<Ident>, 
+    pub self_type: Ident,
+    pub local_aliases: HashMap<Ident, Type>,
+}
+
+impl<'a> FnFFIInputs<'a> {
+    fn strip_local_alias(&self, ty: &Type) -> Type {
+        if let Type::Path(type_path) = ty {
+            if let Some(backing_type) = self.local_aliases.get(&type_path.path.segments.last().unwrap().ident) {
+                backing_type.clone()
+            } else {
+                ty.deref().clone()
+            }
+            // self.local_aliases[&ty.path.segments.last().unwrap().ident].clone()
+        } else {
+            ty.deref().clone()
+        }
+    }
+}
+
+impl<'a> From<FnFFIInputs<'a>> for FnFFI {
+    fn from(inputs: FnFFIInputs) -> Self {
+        let fn_name = inputs.method.sig.ident.clone();
+        let (arguments, has_receiver) = inputs.method.sig.inputs.iter().fold(
             (Vec::<FnParameterFFI>::new(), false),
             |mut acc, input| {
                 match input {
                     syn::FnArg::Receiver(_receiver) => acc.1 = true,
-                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, raw_types.clone(), Some(self_type.clone())))),
+                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, inputs.raw_types.clone(), Some(inputs.self_type.clone())))),
                 }
                 acc
             },
         );
 
-        let return_type: Option<NativeTypeData> = match &method.sig.output {
+        let return_type: Option<NativeTypeData> = match &inputs.method.sig.output {
             syn::ReturnType::Default => None,
-            syn::ReturnType::Type(_token, ty) => Some(NativeTypeData::from(
-                UnparsedNativeTypeData::initial(*ty.clone(), raw_types, Some(self_type)),
-            )),
+            syn::ReturnType::Type(_token, ty) => {
+                let dealiased = inputs.strip_local_alias(&*ty);
+                Some(NativeTypeData::from(
+                    UnparsedNativeTypeData::initial(dealiased, inputs.raw_types, Some(inputs.self_type))
+                ))
+            }
         };
 
         Self {
@@ -61,6 +87,37 @@ impl From<(&ImplItemMethod, Vec<Ident>, Ident)> for FnFFI {
     }
 }
 
+// impl From<(&ImplItemMethod, Vec<Ident>, Ident)> for FnFFI {
+//     fn from(data: (&ImplItemMethod, Vec<Ident>, Ident)) -> Self {
+//         let (method, raw_types, self_type) = data;
+//         let fn_name = method.sig.ident.clone();
+//         let (arguments, has_receiver) = method.sig.inputs.iter().fold(
+//             (Vec::<FnParameterFFI>::new(), false),
+//             |mut acc, input| {
+//                 match input {
+//                     syn::FnArg::Receiver(_receiver) => acc.1 = true,
+//                     syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, raw_types.clone(), Some(self_type.clone())))),
+//                 }
+//                 acc
+//             },
+//         );
+
+//         let return_type: Option<NativeTypeData> = match &method.sig.output {
+//             syn::ReturnType::Default => None,
+//             syn::ReturnType::Type(_token, ty) => Some(NativeTypeData::from(
+//                 UnparsedNativeTypeData::initial(*ty.clone(), raw_types, Some(self_type)),
+//             )),
+//         };
+
+//         Self {
+//             fn_name,
+//             has_receiver,
+//             parameters: arguments,
+//             return_type,
+//         }
+//     }
+// }
+
 impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
     fn from(data: (&ItemFn, Vec<Ident>)) -> Self {
         let (method, raw_types) = data;
@@ -70,6 +127,8 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
             |mut acc, input| {
                 match input {
                     syn::FnArg::Receiver(_receiver) => acc.1 = true,
+                    // TODO: We should use inputs.strip_local_alias(type) on parameters, too, since
+                    // they can occur in that position as well.
                     syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, raw_types.clone(), None))),
                 }
                 acc
