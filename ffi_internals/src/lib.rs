@@ -5,6 +5,7 @@
 //! they can be shared between the codegen crates without needing to expose them in `ffi_common`,
 //! which has more general FFI stuff.
 //!
+
 #![warn(
     clippy::all,
     clippy::correctness,

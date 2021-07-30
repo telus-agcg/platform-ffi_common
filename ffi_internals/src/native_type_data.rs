@@ -33,7 +33,7 @@ pub enum NativeType {
     /// properties on the type from getter functions.
     ///
     Boxed(Ident),
-    /// A timestamp that's safe to expose across the FFI (see `ffi_common::datetime`).
+    /// A timestamp that's safe to expose across the FFI (see `ffi_core::datetime`).
     ///
     DateTime,
     /// A type that should be exposed as a raw value (like an i32, or a repr(C) enum).
@@ -202,11 +202,11 @@ impl NativeTypeData {
                         if #field_name.is_null() {
                             None
                         } else {
-                            Some(ffi_common::string::string_from_c(#field_name))
+                            Some(ffi_common::ffi_core::string::string_from_c(#field_name))
                         }
                     }
                 } else {
-                    quote!(ffi_common::string::string_from_c(#field_name))
+                    quote!(ffi_common::ffi_core::string::string_from_c(#field_name))
                 }
             }
             NativeType::Uuid => {
@@ -215,11 +215,11 @@ impl NativeTypeData {
                         if #field_name.is_null() {
                             None
                         } else {
-                            Some(ffi_common::string::uuid_from_c(#field_name))
+                            Some(ffi_common::ffi_core::string::uuid_from_c(#field_name))
                         }
                     }
                 } else {
-                    quote!(ffi_common::string::uuid_from_c(#field_name))
+                    quote!(ffi_common::ffi_core::string::uuid_from_c(#field_name))
                 }
             }
         }

@@ -1,0 +1,16 @@
+[package]
+name = "ffi_core"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+chrono = "0.4"
+paste = "1.0.0"
+thiserror = "1.0"
+uuid = { version = "0.8", features = ["v4"] }
+
+[build-dependencies]
+cbindgen = "0.19"
+
+[lib]
+crate-type = ["staticlib", "rlib"]

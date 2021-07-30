@@ -9,7 +9,6 @@ repository = "https://github.com/agrian-inc/ffi_common"
 proc-macro = true
 
 [dependencies]
-ffi_common = { version = "0.3", registry = "agrian-registry" }
 ffi_consumer = { version = "0.3", registry = "agrian-registry" }
 ffi_internals = { version = "0.3", registry = "agrian-registry" }
 heck = "0.3"
@@ -18,9 +17,9 @@ quote = "1.0"
 syn = { version = "1.0", features = ["full"] }
 
 [build-dependencies]
-ffi_common = { version = "0.3", registry = "agrian-registry" }
 ffi_consumer = { version = "0.3", registry = "agrian-registry" }
 
 [dev-dependencies]
+ffi_common = { version = "0.3", registry = "agrian-registry" }
 chrono = "0.4"
 uuid = { version = "0.8", features = ["v4"] }

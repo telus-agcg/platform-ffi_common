@@ -7,7 +7,7 @@
 //! type allocation.)
 //!
 
-use ffi_common;
+use ffi_common::ffi_core;
 use std::os::raw::c_char;
 use uuid::Uuid;
 
@@ -27,7 +27,7 @@ pub struct NestedStruct {
 fn check_uuid_vec_init_and_free() {
     unsafe {
         let v = vec![Uuid::new_v4(), Uuid::new_v4()];
-        let string_array = ffi_common::string::FFIArrayString::from(&*v);
+        let string_array = ffi_core::string::FFIArrayString::from(&*v);
         let unsafe_ptr = string_array.ptr as *mut *mut c_char;
         let original_pointee = *unsafe_ptr;
 

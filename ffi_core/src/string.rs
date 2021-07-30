@@ -16,7 +16,7 @@ use uuid::Uuid;
 ///
 /// This can also express an `Option<Vec<String>>` with a null pointer and a len and capacity of 0.
 /// ```
-/// use ffi_common::string::FFIArrayString;
+/// use ffi_core::string::FFIArrayString;
 /// FFIArrayString {
 ///     ptr: std::ptr::null(),
 ///     len: 0,
