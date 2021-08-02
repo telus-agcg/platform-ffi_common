@@ -7,14 +7,9 @@ publish = ["agrian-registry"]
 repository = "https://github.com/agrian-inc/ffi_common"
 
 [dependencies]
-chrono = "0.4"
-paste = "1.0.0"
-proc-macro2 = "1.0"
-syn = { version = "1.0", features = ["full"] }
-uuid = { version = "0.8", features = ["v4"] }
-
-[build-dependencies]
-cbindgen = "0.19"
+ffi_consumer = { version = "0.3", registry = "agrian-registry" }
+ffi_core = { path = "../ffi_core" }
+ffi_derive = { version = "0.3", registry = "agrian-registry" }
 
 [lib]
 crate-type = ["staticlib", "rlib"]

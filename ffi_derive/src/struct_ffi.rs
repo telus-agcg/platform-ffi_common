@@ -6,12 +6,12 @@ use ffi_consumer::consumer_struct::ConsumerStruct;
 use ffi_internals::{
     parsing,
     struct_internals::struct_ffi::{StructFFI, StructInputs},
+    quote::{format_ident, quote},
+    syn::{DataStruct, Ident, Path},
+    heck::SnakeCase,
 };
-use heck::SnakeCase;
 use proc_macro2::TokenStream;
-use quote::format_ident;
 use std::convert::TryFrom;
-use syn::{Ident, Path};
 
 pub(super) fn custom(
     type_name: &Ident,
@@ -39,10 +39,10 @@ pub(super) fn custom(
     let file_name = format!("{}.swift", type_name.to_string());
     ffi_internals::write_consumer_file(&file_name, consumer.into(), out_dir);
 
-    quote::quote!(
+    quote!(
         #[allow(box_pointers, missing_docs)]
         pub mod #module_name {
-            use ffi_common::{*, datetime::*, ffi_string, paste, string::FFIArrayString};
+            use ffi_common::ffi_core::{ffi_string, declare_opaque_type_ffi, datetime::*, paste, string::FFIArrayString};
             use std::os::raw::c_char;
             use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
             use super::*;
@@ -60,7 +60,7 @@ pub(super) fn custom(
 pub(super) fn standard(
     module_name: Ident,
     type_name: &Ident,
-    data: syn::DataStruct,
+    data: DataStruct,
     alias_modules: Vec<String>,
     required_imports: Vec<Path>,
     out_dir: &str,

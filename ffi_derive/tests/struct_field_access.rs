@@ -3,7 +3,7 @@
 //!
 
 use chrono::NaiveDateTime;
-use ffi_common::{self, datetime::FFIArrayTimeStamp, ffi_string, string::FFIArrayString};
+use ffi_common::ffi_core::{*, datetime::FFIArrayTimeStamp, string::FFIArrayString};
 use std::{convert::TryInto, ffi::CStr};
 use uuid::Uuid;
 
@@ -56,7 +56,7 @@ fn test_struct_ffi() {
 
         // Convert to the FFI types that the FFI consumer will be passing in.
         let ffi_string = ffi_string!(input_text);
-        let ffi_i32_array = ffi_common::ffi_array_i32_init(
+        let ffi_i32_array = ffi_array_i32_init(
             input_i32_vec.as_ptr(),
             input_i32_vec.len().try_into().unwrap(),
         );

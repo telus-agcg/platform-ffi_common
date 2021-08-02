@@ -12,7 +12,7 @@
 /// Usage looks like:
 /// ```
 /// # #[macro_use]
-/// # extern crate ffi_common;
+/// # extern crate ffi_core;
 /// # fn main() {
 /// #[repr(C)]
 /// #[derive(Debug, Clone, Copy)]
@@ -227,7 +227,7 @@ It's safe to call this with a null pointer.
 /// Usage looks like:
 /// ```
 /// # #[macro_use]
-/// # extern crate ffi_common;
+/// # extern crate ffi_core;
 /// # fn main() {
 /// #[derive(Debug, Clone)]
 /// pub struct Foo {

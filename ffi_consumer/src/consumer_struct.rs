@@ -7,9 +7,9 @@
 use ffi_internals::{
     native_type_data,
     struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
+    heck::{CamelCase, MixedCase},
+    syn::{Ident, Path, Type}
 };
-use heck::{CamelCase, MixedCase};
-use syn::Path;
 
 /// Contains the data required to generate a consumer type, and associated functions for doing so.
 ///
@@ -208,8 +208,8 @@ impl ConsumerStruct {
         type_name: String,
         required_imports: Vec<Path>,
         init_fn_name: String,
-        init_args: &[(syn::Ident, syn::Type)],
-        getters: &[(syn::Ident, syn::Type)],
+        init_args: &[(Ident, Type)],
+        getters: &[(Ident, Type)],
         free_fn_name: String,
         clone_fn_name: String,
     ) -> Self {
