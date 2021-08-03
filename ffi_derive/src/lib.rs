@@ -296,7 +296,7 @@ use ffi_internals::{
     },
     parsing,
     quote::{format_ident, ToTokens},
-    syn::{parse_macro_input, AttributeArgs, Data, DeriveInput, ItemImpl, ItemMod, Type},
+    syn::{parse_macro_input, AttributeArgs, Data, DeriveInput, ItemImpl, ItemFn, ItemMod, Type},
     heck::SnakeCase,
 };
 use proc_macro::TokenStream;
@@ -403,8 +403,8 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     );
     let type_name = if let Type::Path(ty) = &*item_impl.self_ty {
         ty.path.segments.last().unwrap().ident.clone()
-    } else if let syn::Type::Reference(r) = &*item_impl.self_ty {
-        if let syn::Type::Path(ty) = &*r.elem {
+    } else if let Type::Reference(r) = &*item_impl.self_ty {
+        if let Type::Path(ty) = &*r.elem {
             ty.path.segments.last().unwrap().ident.clone()
         } else {
             panic!("Could not find self type for impl: {:?}", r);    
@@ -439,10 +439,10 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 #[proc_macro_attribute]
 pub fn expose_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args = syn::parse_macro_input!(attr as syn::AttributeArgs);
+    let args = ffi_internals::syn::parse_macro_input!(attr as AttributeArgs);
     // let impl_attributes = parsing::ImplAttributes::from(args);
     let fn_attributes = parsing::FnAttributes::from(args);
-    let item_fn = syn::parse_macro_input!(item as syn::ItemFn);
+    let item_fn = ffi_internals::syn::parse_macro_input!(item as ItemFn);
 
     let fn_ffi = FnFFI::from((&item_fn, fn_attributes.raw_types));
     let module_name = format_ident!("{}_ffi", item_fn.sig.ident);
@@ -456,7 +456,7 @@ pub fn expose_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let ffi = fn_ffi.generate_ffi(&module_name, None, None);
 
-    let output = quote::quote! {
+    let output = ffi_internals::quote::quote! {
         #item_fn
 
         #ffi

@@ -275,7 +275,7 @@ impl ConsumerStruct {
         );
 
         let type_prefix = format!("get_{}_", type_name);
-        let failable_fns: Vec<&syn::Ident> = custom_attributes
+        let failable_fns: Vec<&Ident> = custom_attributes
             .failable_fns
             .iter()
             .map(|x| &x.segments.last().unwrap().ident)
