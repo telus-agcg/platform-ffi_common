@@ -1,7 +1,10 @@
 [package]
 name = "ffi_core"
-version = "0.1.0"
+version = "0.4.0"
+authors = ["Nicholas Smillie <nicholas@agrian.com>"]
 edition = "2018"
+publish = ["agrian-registry"]
+repository = "https://github.com/agrian-inc/ffi_common"
 
 [dependencies]
 chrono = "0.4"
