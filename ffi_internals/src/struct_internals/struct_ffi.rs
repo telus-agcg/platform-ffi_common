@@ -120,10 +120,9 @@ impl From<StructFFI> for TokenStream {
         quote!(
             #[allow(box_pointers, missing_docs)]
             pub mod #module_name {
-                use ffi_common::{*, datetime::*, ffi_string, string::FFIArrayString};
+                use ffi_common::ffi_core::{*, paste, datetime::*, string::FFIArrayString};
                 use std::os::raw::c_char;
                 use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
-                use paste::paste;
                 #extra_imports
                 use super::*;
 

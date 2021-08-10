@@ -80,7 +80,7 @@ impl FnFFI {
     ///     let return_value = match return_value {
     ///         Ok(val) => val,
     ///         Err(error) => {
-    ///             ::ffi_common::error::set_last_err_msg(error.to_string().as_str());
+    ///             ::ffi_core::error::set_last_err_msg(error.to_string().as_str());
     ///             <Vec<ReturnType>>::default()
     ///         }
     ///     };
@@ -147,7 +147,7 @@ impl FnFFI {
             let assignment = quote!(let return_value = #native_call(#calling_args););
             let mut return_conversion = if r.result {
                 let native_type = r.owned_native_type();
-                quote!(let return_value = ffi_common::try_or_set_error!(return_value, <#native_type>::default());)
+                quote!(let return_value = ffi_common::ffi_core::try_or_set_error!(return_value, <#native_type>::default());)
             } else {
                 quote!()
             };

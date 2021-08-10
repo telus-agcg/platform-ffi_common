@@ -12,7 +12,7 @@
 /// Usage looks like:
 /// ```
 /// # #[macro_use]
-/// # extern crate ffi_common;
+/// # extern crate ffi_core;
 /// # fn main() {
 /// #[repr(C)]
 /// #[derive(Debug, Clone, Copy)]
@@ -37,7 +37,7 @@
 #[macro_export]
 macro_rules! declare_value_type_ffi {
     ($($t:ident),*) => ($(
-        paste! {
+        $crate::paste! {
             #[doc = """
 An FFI-safe representation of a collection of FFI-safe data structures.
 
@@ -227,7 +227,7 @@ It's safe to call this with a null pointer.
 /// Usage looks like:
 /// ```
 /// # #[macro_use]
-/// # extern crate ffi_common;
+/// # extern crate ffi_core;
 /// # fn main() {
 /// #[derive(Debug, Clone)]
 /// pub struct Foo {
@@ -244,7 +244,7 @@ It's safe to call this with a null pointer.
 #[macro_export]
 macro_rules! declare_opaque_type_ffi {
     ($($t:ident),*) => ($(
-        paste! {
+        $crate::paste! {
             #[doc = """
 An FFI-safe representation of a collection of opaque data structures for passing ownership of those
 structures across the language boundary.

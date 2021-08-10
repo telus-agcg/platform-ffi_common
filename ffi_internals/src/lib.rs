@@ -5,6 +5,7 @@
 //! they can be shared between the codegen crates without needing to expose them in `ffi_common`,
 //! which has more general FFI stuff.
 //!
+
 #![warn(
     clippy::all,
     clippy::correctness,
@@ -28,6 +29,11 @@ pub mod impl_internals;
 pub mod native_type_data;
 pub mod parsing;
 pub mod struct_internals;
+
+// Reexports
+pub use heck;
+pub use syn;
+pub use quote;
 
 /// Creates a consumer directory at `out_dir` and returns its path.
 ///

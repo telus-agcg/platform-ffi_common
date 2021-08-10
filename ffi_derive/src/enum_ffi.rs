@@ -3,10 +3,12 @@
 //!
 
 use ffi_consumer::consumer_enum::ConsumerEnum;
-use heck::SnakeCase;
 use proc_macro2::TokenStream;
-use quote::{format_ident, quote};
-use syn::Ident;
+use ffi_internals::{
+    quote::{format_ident, quote},
+    syn::Ident,
+    heck::SnakeCase,
+};
 
 /// Builds an FFI module for the enum `type_name`.
 ///
@@ -23,8 +25,7 @@ pub(super) fn build(module_name: &Ident, type_name: &Ident, out_dir: &str) -> To
     quote! {
         #[allow(missing_docs)]
         pub mod #module_name {
-            use ffi_common::{error, declare_value_type_ffi};
-            use paste::paste;
+            use ffi_common::ffi_core::{error, paste, declare_value_type_ffi};
             use super::*;
 
             #[no_mangle]

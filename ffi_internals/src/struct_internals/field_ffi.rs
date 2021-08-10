@@ -127,7 +127,7 @@ impl FieldFFI {
                     if self.native_type_data.option {
                         quote!(
                             data.#field_name.as_ref().map_or(ptr::null(), |s| {
-                                ffi_common::ffi_string!(s.to_string())
+                                ffi_common::ffi_core::ffi_string!(s.to_string())
                             })
                         )
                     } else {
@@ -138,7 +138,7 @@ impl FieldFFI {
         };
 
         quote! {
-            paste! {
+            ffi_common::ffi_core::paste! {
                 #[no_mangle]
                 #[doc = "Get `" #field_name "` for this `" #type_name"`."]
                 pub unsafe extern "C" fn #getter_name(
