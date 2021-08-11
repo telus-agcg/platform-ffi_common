@@ -151,7 +151,7 @@ extension {}: NativeArrayData {{
 impl From<ConsumerEnum> for String {
     fn from(consumer: ConsumerEnum) -> Self {
         [
-            crate::HEADER,
+            super::HEADER,
             &consumer.native_data_impl(),
             &consumer.array_conformance(),
             &consumer.consumer_array_type(),

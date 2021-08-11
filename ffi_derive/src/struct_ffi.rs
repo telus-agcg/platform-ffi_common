@@ -2,8 +2,8 @@
 //! Creates an FFI module for a struct, exposing its fields as C getter functions.
 //!
 
-use ffi_consumer::consumer_struct::ConsumerStruct;
 use ffi_internals::{
+    consumer::consumer_struct::ConsumerStruct,
     parsing,
     parsing::CustomAttributes,
     struct_internals::struct_ffi::{StructFFI, StructInputs},

@@ -2,7 +2,7 @@
 //! Creates an FFI module for an (FFI-safe) `enum` data structure.
 //!
 
-use ffi_consumer::consumer_enum::ConsumerEnum;
+use ffi_internals::consumer::consumer_enum::ConsumerEnum;
 use proc_macro2::TokenStream;
 use ffi_internals::{
     quote::{format_ident, quote},

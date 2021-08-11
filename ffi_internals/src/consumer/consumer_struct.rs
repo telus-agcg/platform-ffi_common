@@ -4,7 +4,7 @@
 //! native getters for reading properties from the Rust struct.
 //!
 
-use ffi_internals::{
+use crate::{
     native_type_data,
     struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
     parsing::CustomAttributes,
@@ -370,7 +370,7 @@ impl From<&StructFFI> for ConsumerStruct {
 impl From<ConsumerStruct> for String {
     fn from(consumer: ConsumerStruct) -> Self {
         [
-            crate::HEADER,
+            super::HEADER,
             &consumer.type_definition(),
             &consumer.ffi_array_impl(),
             &consumer.native_data_impl(),

@@ -10,6 +10,14 @@ use quote::{format_ident, quote};
 use syn::{Ident, ImplItemMethod, ItemFn, PatType, Type};
 use std::collections::HashMap;
 
+/// Describes the various kinds of receivers we may encounter when parsing a function.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FnReceiver {
+    None,
+    Owned,
+    Borrowed,
+}
+
 /// A representation of a Rust fn that can be used to generate an FFI and consumer code for
 /// calling that FFI.
 #[derive(Debug)]
@@ -23,10 +31,10 @@ pub struct FnFFI {
     /// cases, but our use cases are simple enough for now that we don't need to worry about full
     /// support.
     ///
-    pub has_receiver: bool,
+    pub receiver: FnReceiver,
 
     /// The parameters for this function.
-    parameters: Vec<FnParameterFFI>,
+    pub(crate) parameters: Vec<FnParameterFFI>,
 
     /// The return type for this function, if any.
     pub return_type: Option<NativeTypeData>,
@@ -57,11 +65,13 @@ impl<'a> FnFFIInputs<'a> {
 impl<'a> From<FnFFIInputs<'a>> for FnFFI {
     fn from(inputs: FnFFIInputs) -> Self {
         let fn_name = inputs.method.sig.ident.clone();
-        let (arguments, has_receiver) = inputs.method.sig.inputs.iter().fold(
-            (Vec::<FnParameterFFI>::new(), false),
+        let (arguments, receiver) = inputs.method.sig.inputs.iter().fold(
+            (Vec::<FnParameterFFI>::new(), FnReceiver::None),
             |mut acc, input| {
                 match input {
-                    syn::FnArg::Receiver(_receiver) => acc.1 = true,
+                    syn::FnArg::Receiver(receiver) => {
+                        acc.1 = if receiver.reference.is_some() { FnReceiver::Borrowed } else { FnReceiver::Owned }
+                    },
                     syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, inputs.raw_types.clone(), Some(inputs.self_type.clone())))),
                 }
                 acc
@@ -80,7 +90,7 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
 
         Self {
             fn_name,
-            has_receiver,
+            receiver,
             parameters: arguments,
             return_type,
         }
@@ -91,11 +101,13 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
     fn from(data: (&ItemFn, Vec<Ident>)) -> Self {
         let (method, raw_types) = data;
         let fn_name = method.sig.ident.clone();
-        let (arguments, has_receiver) = method.sig.inputs.iter().fold(
-            (Vec::<FnParameterFFI>::new(), false),
+        let (arguments, receiver) = method.sig.inputs.iter().fold(
+            (Vec::<FnParameterFFI>::new(), FnReceiver::None),
             |mut acc, input| {
                 match input {
-                    syn::FnArg::Receiver(_receiver) => acc.1 = true,
+                    syn::FnArg::Receiver(receiver) => {
+                        acc.1 = if receiver.reference.is_some() { FnReceiver::Borrowed } else { FnReceiver::Owned }
+                    },
                     // TODO: We should use inputs.strip_local_alias(type) on parameters, too, since
                     // they can occur in that position as well.
                     syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, raw_types.clone(), None))),
@@ -113,7 +125,7 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
 
         Self {
             fn_name,
-            has_receiver,
+            receiver,
             parameters: arguments,
             return_type,
         }
@@ -156,14 +168,16 @@ impl FnFFI {
     ) -> TokenStream {
         // If the native function takes a receiver, we'll include an parameter for a pointer to an
         // instance of this type and a line in the function body for dereferencing the pointer.
-        let (receiver_arg, receiver_conversion) = if self.has_receiver {
-            (
+        let (receiver_arg, receiver_conversion) = match self.receiver {
+            FnReceiver::None => (quote!(), quote!()),
+            FnReceiver::Owned => (
+                    quote!(#type_as_parameter_name: *const #type_name, ),
+                    quote!(let data = (*#type_as_parameter_name).clone();),
+                ),
+            FnReceiver::Borrowed => (
                 quote!(#type_as_parameter_name: *const #type_name, ),
-                // TODO: Only clone if the receiver isn't a borrowed reference.
-                quote!(let data = (*#type_as_parameter_name).clone();),
-            )
-        } else {
-            (quote!(), quote!())
+                quote!(let data = (&*#type_as_parameter_name);),
+            ),
         };
         let (signature_args, calling_args, parameter_conversions) = self.parameters.iter().fold(
             (receiver_arg, quote!(), receiver_conversion),
@@ -200,7 +214,7 @@ impl FnFFI {
 
         let ffi_fn_name = self.ffi_fn_name(module_name);
         let native_fn_name = &self.fn_name;
-        let native_call = if self.has_receiver {
+        let native_call = if self.receiver != FnReceiver::None {
             quote!(data.#native_fn_name)
         } else {
             if type_name.is_some() {
@@ -259,148 +273,25 @@ impl FnFFI {
         }
     }
 
-    fn ffi_fn_name(&self, module_name: &Ident) -> Ident {
+    pub(crate) fn ffi_fn_name(&self, module_name: &Ident) -> Ident {
         format_ident!("{}_{}", module_name, self.fn_name)
-    }
-
-    /// Generates a consumer function for calling the foreign function produced by
-    /// `self.generate_ffi(...)`.
-    ///
-    pub(super) fn generate_consumer(&self, module_name: &Ident) -> String {
-        // Include the keyword `static` if this function doesn't take a receiver.
-        let static_keyword = if !self.has_receiver { "static" } else { "" };
-        let (return_conversion, close_conversion, return_sig) =
-            if let Some(return_type) = &self.return_type {
-                let ty = return_type.consumer_type(None);
-                (
-                    if return_type.is_result {
-                        "handle(result: ".to_string() 
-                   } else {
-                       format!("{}.fromRust(", ty) 
-                   },
-                   format!(")"),
-                   if return_type.is_result {
-                       format!("-> Result<{}, RustError>", ty)
-                   } else {
-                       format!("-> {}", ty)
-                   },
-                )
-            } else {
-                (String::new(), String::new(), String::new())
-            };
-        format!(
-            r#"
-    {static_keyword} func {native_fn_name}({native_parameters}) {return_sig} {{
-        {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
-    }}
-            "#,
-            static_keyword = static_keyword,
-            native_fn_name = self.fn_name.to_string(),
-            native_parameters = self.consumer_parameters(),
-            return_sig = return_sig,
-            return_conversion = return_conversion,
-            ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
-            ffi_parameters = self.ffi_calling_arguments(),
-            close_conversion = close_conversion,
-        )
-    }
-
-    pub fn generate_consumer_extension(&self, header: &str, consumer_type: &str, module_name: &Ident, imports: Option<&str>) -> String {
-        // Include the keyword `static` if this function doesn't take a receiver.
-        let static_keyword = if !self.has_receiver { "static" } else { "" };
-        let (return_conversion, close_conversion, return_sig) =
-            if let Some(return_type) = &self.return_type {
-                let ty = return_type.consumer_type(None);
-                (
-                    if return_type.is_result {
-                         "handle(result: ".to_string() 
-                    } else {
-                        format!("{}.fromRust(", ty) 
-                    },
-                    format!(")"),
-                    if return_type.is_result {
-                        format!("-> Result<{}, RustError>", ty)
-                    } else {
-                        format!("-> {}", ty)
-                    },
-                )
-            } else {
-                (String::new(), String::new(), String::new())
-            };
-        format!(
-            r#"
-{header}
-{imports}
-
-extension {consumer_type} {{
-    {static_keyword} func {native_fn_name}({native_parameters}) {return_sig} {{
-        {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
-    }}
-}}
-            "#,
-            static_keyword = static_keyword,
-            header = header,
-            consumer_type = consumer_type,
-            imports = imports.unwrap_or_default(),
-            native_fn_name = self.fn_name.to_string(),
-            native_parameters = self.consumer_parameters(),
-            return_sig = return_sig,
-            return_conversion = return_conversion,
-            ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
-            ffi_parameters = self.ffi_calling_arguments(),
-            close_conversion = close_conversion,
-        )
-    }
-
-    fn consumer_parameters(&self) -> String {
-        self.parameters
-            .iter()
-            .map(|arg| {
-                format!(
-                    "{}: {}",
-                    arg.name.to_string(),
-                    arg.native_type_data.consumer_type(None)
-                )
-            })
-            .collect::<Vec<String>>()
-            .join(", ")
-    }
-
-    fn ffi_calling_arguments(&self) -> String {
-        let mut parameters: Vec<String> = self
-            .parameters
-            .iter()
-            .map(|arg| {
-                let clone_or_borrow = if arg.native_type_data.argument_borrows_supported() {
-                    "borrowReference"
-                } else { 
-                    "clone"
-                };
-                format!("{}.{}()", arg.name.to_string(), clone_or_borrow)
-            })
-            .collect();
-        if self.has_receiver {
-            let receiver_arg = "pointer".to_string();
-            parameters.insert(0, receiver_arg);
-        }
-        parameters.join(", ")
     }
 }
 
 /// Represents a parameter for to a Rust function.
 #[derive(Debug)]
-struct FnParameterFFI {
+pub(crate) struct FnParameterFFI {
     /// The name of this parameter.
     ///
-    name: Ident,
+    pub(crate) name: Ident,
 
     /// The type information for generating an FFI for this parameter.
     ///
-    native_type_data: NativeTypeData,
+    pub(crate) native_type_data: NativeTypeData,
 
     /// The original type of the fn parameter.
     ///
-    original_type: Type,
+    pub(crate) original_type: Type,
 }
 
 impl From<(&PatType, Vec<Ident>, Option<Ident>)> for FnParameterFFI {

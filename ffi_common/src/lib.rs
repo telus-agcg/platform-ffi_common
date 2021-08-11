@@ -22,6 +22,6 @@
 )]
 #![forbid(missing_docs, unused_extern_crates, unused_imports)]
 
-pub use ffi_derive;
-pub use ffi_consumer;
 pub use ffi_core;
+pub use ffi_derive;
+pub use ffi_internals::consumer;

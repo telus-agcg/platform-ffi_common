@@ -4,7 +4,7 @@
 //!
 
 use super::fn_ffi::{FnFFI, FnFFIInputs};
-use heck::{CamelCase, SnakeCase};
+use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, ImplItem, Path};
@@ -101,90 +101,24 @@ pub struct ImplFFI {
     /// FFI module and consumer file. If we have a use case for exposing standalone impls, we'll
     /// have to come up with another way to ensure that uniqueness.
     ///
-    trait_name: Ident,
+    pub(crate) trait_name: Ident,
 
     /// The name of the type that this implementation applies to.
     ///
-    type_name: Ident,
+    pub(crate) type_name: Ident,
 
     /// A collection of representations of the functions declared in this impl that can be used to
     /// generate an FFI and consumer code for each function.
     ///
-    fns: Vec<FnFFI>,
+    pub(crate) fns: Vec<FnFFI>,
 
     /// Any FFI import paths specified in the attributes on the macro invocation.
     ///
-    ffi_imports: Vec<Path>,
+    pub(crate) ffi_imports: Vec<Path>,
 
     /// Any consumer import paths specified in the attributes on the macro invocation.
     ///
-    consumer_imports: Vec<Path>,
-}
-
-impl ImplFFI {
-    pub fn consumer_file_name(&self) -> String {
-        format!("{}_{}.swift", self.trait_name, self.type_name)
-    }
-
-    /// Generates an implementation for the consumer's type so that they'll be able to call it like
-    /// `nativeTypeInstance.someMethod(with: params)`. Hardcoded to Swift for now like all the other
-    /// consumer output, until we bother templating for other languages.
-    ///
-    /// Example output:
-    /// ```ignore
-    /// extension SelectedField {
-    ///     func build_commodity_locations(plantings: [CLPlanting]) -> [CommodityLocation] {
-    ///         [CommodityLocation].fromRust(build_commodity_locations(pointer, plantings.clone()))
-    ///     }
-    /// }
-    /// ```
-    ///
-    pub fn generate_consumer(&self, header: &str) -> String {
-        let additional_imports: Vec<String> = self
-            .consumer_imports
-            .iter()
-            .map(|path| {
-                let crate_name = path
-                    .segments
-                    .first()
-                    .unwrap()
-                    .ident
-                    .to_string()
-                    .to_camel_case();
-                let type_name = path
-                    .segments
-                    .last()
-                    .unwrap()
-                    .ident
-                    .to_string()
-                    .to_camel_case();
-                format!("import class {}.{}", crate_name, type_name)
-            })
-            .collect();
-        format!(
-            r#"
-{header}
-{common_framework}
-{additional_imports}
-
-public extension {native_type} {{
-    {functions}
-}}
-            "#,
-            header = header,
-            common_framework = option_env!("FFI_COMMON_FRAMEWORK")
-                .map(|f| format!("import {}", f))
-                .unwrap_or_default(),
-            additional_imports = additional_imports.join("\n"),
-            native_type = self.type_name.to_string(),
-            functions = self
-                .fns
-                .iter()
-                .map(|f| f.generate_consumer(&self.module_name()))
-                .collect::<Vec<String>>()
-                .join("\n"),
-        )
-    }
+    pub(crate) consumer_imports: Vec<Path>,
 }
 
 impl ImplFFI {
@@ -198,7 +132,7 @@ impl ImplFFI {
 
     /// The name for the generated module, in the pattern `trait_name_type_name_ffi`.
     ///
-    fn module_name(&self) -> Ident {
+    pub(crate) fn module_name(&self) -> Ident {
         format_ident!(
             "{}_{}_ffi",
             self.trait_name.to_string().to_snake_case(),

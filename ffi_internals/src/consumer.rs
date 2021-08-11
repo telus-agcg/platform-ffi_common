@@ -32,29 +32,14 @@
 //!         .expect("Unable to write consumer files");
 //! }
 //! ```
-//!
-
-#![warn(
-    clippy::all,
-    clippy::correctness,
-    clippy::nursery,
-    clippy::pedantic,
-    future_incompatible,
-    missing_copy_implementations,
-    nonstandard_style,
-    trivial_casts,
-    trivial_numeric_casts,
-    unreachable_pub,
-    unused_qualifications,
-    unused_results,
-    variant_size_differences
-)]
-#![forbid(missing_docs, unused_extern_crates, unused_imports)]
+//! 
 
 mod error;
 mod primitives_conformance;
 
 pub mod consumer_enum;
+pub mod consumer_fn;
+pub mod consumer_impl;
 pub mod consumer_struct;
 pub use error::Error;
 
@@ -76,7 +61,7 @@ pub const HEADER: &str =
 ///
 pub fn write_consumer_foundation(consumer_dir: &str, language: &str) -> Result<(), Error> {
     let consumer_dir = format!("{}/common", consumer_dir);
-    let consumer_dir = ffi_internals::create_consumer_dir(&consumer_dir)?;
+    let consumer_dir = crate::create_consumer_dir(&consumer_dir)?;
     write_support_files(consumer_dir, language)?;
     write_primitive_conformances(consumer_dir)?;
     Ok(())
@@ -112,7 +97,7 @@ fn write_primitive_conformances(consumer_dir: &str) -> Result<(), std::io::Error
     ]
     .iter()
     .map(|native_type| {
-        let consumer_type = ffi_internals::consumer_type_for(native_type, false);
+        let consumer_type = crate::consumer_type_for(native_type, false);
         // Note: This is only accurate for Swift primitives, whose FFI and consumer types happen to
         // match. Don't assume consumer_type == ffi_type for non-primitive types, or for primitives
         // in other languages.

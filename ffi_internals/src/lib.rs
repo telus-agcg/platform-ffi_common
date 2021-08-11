@@ -25,6 +25,7 @@
 )]
 
 pub mod alias_resolution;
+pub mod consumer;
 pub mod impl_internals;
 pub mod native_type_data;
 pub mod parsing;
