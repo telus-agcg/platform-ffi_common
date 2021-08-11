@@ -134,7 +134,7 @@ impl ImplFFI {
     /// ```ignore
     /// extension SelectedField {
     ///     func build_commodity_locations(plantings: [CLPlanting]) -> [CommodityLocation] {
-    ///         [CommodityLocation].fromRust(build_commodity_locations(pointer, plantings.toRust()))
+    ///         [CommodityLocation].fromRust(build_commodity_locations(pointer, plantings.clone()))
     ///     }
     /// }
     /// ```

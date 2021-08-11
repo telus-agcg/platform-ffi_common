@@ -87,37 +87,6 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
     }
 }
 
-// impl From<(&ImplItemMethod, Vec<Ident>, Ident)> for FnFFI {
-//     fn from(data: (&ImplItemMethod, Vec<Ident>, Ident)) -> Self {
-//         let (method, raw_types, self_type) = data;
-//         let fn_name = method.sig.ident.clone();
-//         let (arguments, has_receiver) = method.sig.inputs.iter().fold(
-//             (Vec::<FnParameterFFI>::new(), false),
-//             |mut acc, input| {
-//                 match input {
-//                     syn::FnArg::Receiver(_receiver) => acc.1 = true,
-//                     syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((arg, raw_types.clone(), Some(self_type.clone())))),
-//                 }
-//                 acc
-//             },
-//         );
-
-//         let return_type: Option<NativeTypeData> = match &method.sig.output {
-//             syn::ReturnType::Default => None,
-//             syn::ReturnType::Type(_token, ty) => Some(NativeTypeData::from(
-//                 UnparsedNativeTypeData::initial(*ty.clone(), raw_types, Some(self_type)),
-//             )),
-//         };
-
-//         Self {
-//             fn_name,
-//             has_receiver,
-//             parameters: arguments,
-//             return_type,
-//         }
-//     }
-// }
-
 impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
     fn from(data: (&ItemFn, Vec<Ident>)) -> Self {
         let (method, raw_types) = data;
@@ -190,6 +159,7 @@ impl FnFFI {
         let (receiver_arg, receiver_conversion) = if self.has_receiver {
             (
                 quote!(#type_as_parameter_name: *const #type_name, ),
+                // TODO: Only clone if the receiver isn't a borrowed reference.
                 quote!(let data = (*#type_as_parameter_name).clone();),
             )
         } else {
@@ -400,7 +370,14 @@ extension {consumer_type} {{
         let mut parameters: Vec<String> = self
             .parameters
             .iter()
-            .map(|arg| format!("{}.toRust()", arg.name.to_string()))
+            .map(|arg| {
+                let clone_or_borrow = if arg.native_type_data.argument_borrows_supported() {
+                    "borrowReference"
+                } else { 
+                    "clone"
+                };
+                format!("{}.{}()", arg.name.to_string(), clone_or_borrow)
+            })
             .collect();
         if self.has_receiver {
             let receiver_arg = "pointer".to_string();

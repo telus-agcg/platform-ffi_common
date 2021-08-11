@@ -286,8 +286,6 @@
 mod enum_ffi;
 mod struct_ffi;
 
-// TODO: Rust functions that take a borrowed reference (like the wise_units ops) are being called on the consumer side with a cloned copy via the `toRust` method. This is inefficient and currently leaks, since nothing ever frees those cloned and borrowed resources. We should 1) rename that to `cloneIntoRust` or something along those lines, and 2) differentiate between borrowed and non-borrowed calls. We don't have to implement a borrow system, but we need to preserve those semantics in the client-side calls.
-
 use ffi_internals::{
     alias_resolution,
     impl_internals::{

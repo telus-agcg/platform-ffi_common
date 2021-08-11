@@ -322,6 +322,24 @@ impl NativeTypeData {
             }
         }
     }
+
+    /// Returns true if we support borrowed arguments for this variant of `NativeType`, otherwise
+    /// false.
+    ///
+    pub(crate) fn argument_borrows_supported(&self) -> bool {
+        // If it's not a borrow, or we're dealing with a collection type, it's not borrowed. We'll
+        // probably add support for collection types eventually, but it's not essential yet.
+        if !self.is_borrow || self.is_vec {
+            return false;
+        }
+        match self.native_type {
+            // Boxed and DateTime types are always exposed via pointer, so they're fine to borrow.
+            NativeType::Boxed(_) | NativeType::DateTime => true,
+            // Raw types are passed through the FFI by value; there's no reason to borrow them.
+            // String/Uuid are certainly worth supporting borrows for, but we're not there yet.
+            NativeType::Raw(_) | NativeType::String | NativeType::Uuid => false,
+        }
+    }
 }
 
 /// Describes the initial state when parsing a `syn::Type`, where we have not yet determined

@@ -142,11 +142,18 @@ extension {array_name}: FFIArray {{
 extension {}: NativeData {{
     public typealias ForeignType = OpaquePointer?
 
-    /// `toRust()` will clone this instance (in Rust) and return a pointer to it that can be used
-    /// when calling a Rust function that takes ownership of an instance (like an initializer with a
-    /// parameter of this type).
-    public func toRust() -> ForeignType {{
+    /// `clone()` will clone this instance (in Rust) and return a pointer to it that can be 
+    /// used when calling a Rust function that takes ownership of an instance (like an initializer
+    /// with a parameter of this type).
+    public func clone() -> ForeignType {{
         return {}(pointer)
+    }}
+
+    /// `borrowReference()` will pass this instance's `pointer` to Rust as a reference. This
+    /// must only be used when calling Rust functions that take a borrowed reference; otherwise,
+    /// Rust will free `pointer` while this instance retains it.
+    public func borrowReference() -> ForeignType {{
+        return pointer
     }}
 
     /// Initializes an instance of this type from a pointer to an instance of the Rust type.
@@ -163,10 +170,19 @@ extension {}: NativeData {{
         format!(
             r#"
 public extension Optional where Wrapped == {} {{
-    func toRust() -> OpaquePointer? {{
+    func clone() -> OpaquePointer? {{
         switch self {{
         case let .some(value):
-            return value.toRust()
+            return value.clone()
+        case .none:
+            return nil
+        }}
+    }}
+
+    func borrowReference() -> OpaquePointer? {{
+        switch self {{
+        case let .some(value):
+            return value.borrowReference()
         case .none:
             return nil
         }}
@@ -264,9 +280,13 @@ impl ConsumerStruct {
                     consumer_type,
                     trailing_punctuation
                 ));
-                // This looks like `foo.toRust(),`.
+                // It's worth noting here that we always clone when calling an initializer -- the
+                // new Rust instance needs to take ownership of the data because it will be owned by
+                // a new Swift instance whose lifetime is unrelated to the lifetime of the
+                // parameters passed to it.
+                // This looks like `foo.clone(),`.
                 acc.1.push_str(&format!(
-                    "            {}.toRust(){}",
+                    "            {}.clone(){}",
                     i.to_string(),
                     trailing_punctuation
                 ));
@@ -383,10 +403,12 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
                     .consumer_type(f.attributes.expose_as_ident()),
                 punct = trailing_punctuation
             ));
-            // This looks like `foo.toRust(),`.
+            let clone_or_borrow = if f.native_type_data.is_borrow { "borrowReference" } else { "clone" };
+            // This looks like `foo.clone(),` or `foo.borrowReference(),`.
             acc.1.push_str(&format!(
-                "            {}.toRust(){}",
+                "            {}.{}(){}",
                 f.field_name.to_string(),
+                clone_or_borrow,
                 trailing_punctuation
             ));
             // This looks like `public var foo: Bar { Bar.fromRust(get_bar_foo(pointer) }`.
