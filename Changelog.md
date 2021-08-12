@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1] - 2021-08-11
+
+### Changed
+
+- [DEV-17207] Moved tests from `ffi_derive` to `ffi_common`, effectively sorting out the recursive
+  dependency problem between the crates.
+
 ## [0.4.0] - 2021-08-10
 
 - Note: The release of `ffi_derive` is versioned to `0.3.99` due to a recursive dependency loop on
