@@ -7,9 +7,9 @@ publish = ["agrian-registry"]
 repository = "https://github.com/agrian-inc/ffi_common"
 
 [dependencies]
-ffi_consumer = { version = "0.4.1", registry = "agrian-registry" }
 ffi_core = { version = "0.4.1", registry = "agrian-registry" }
 ffi_derive = { version = "0.4.1", registry = "agrian-registry" }
+ffi_internals = { version = "0.4.1", registry = "agrian-registry" }
 
 [lib]
 crate-type = ["staticlib", "rlib"]
