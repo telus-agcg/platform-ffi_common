@@ -152,7 +152,7 @@ impl FnFFI {
     ///     let return_value = match return_value {
     ///         Ok(val) => val,
     ///         Err(error) => {
-    ///             ::ffi_core::error::set_last_err_msg(error.to_string().as_str());
+    ///             ::core::error::set_last_err_msg(error.to_string().as_str());
     ///             <Vec<ReturnType>>::default()
     ///         }
     ///     };
@@ -236,13 +236,13 @@ impl FnFFI {
                     NativeType::DateTime 
                     if !r.is_vec => {
                         let conversion = r.rust_to_ffi_value(quote!(r), &FieldAttributes { expose_as: None, raw: false} );
-                        let map = quote!(ffi_common::ffi_core::try_or_set_error!(return_value.map(|r| #conversion)));
+                        let map = quote!(ffi_common::core::try_or_set_error!(return_value.map(|r| #conversion)));
                         map
                     },
                     _ => {
                         let native_type = r.owned_native_type();
                         let conversion = r.rust_to_ffi_value(quote!(r), &FieldAttributes { expose_as: None, raw: false} );
-                        let map = quote!(ffi_common::ffi_core::try_or_set_error!(return_value.map(|r| #conversion), <#native_type>::default()));
+                        let map = quote!(ffi_common::core::try_or_set_error!(return_value.map(|r| #conversion), <#native_type>::default()));
                         if r.is_vec {
                             quote! {
                                 use std::ops::Deref;

@@ -228,11 +228,11 @@ impl NativeTypeData {
                         if #field_name.is_null() {
                             None
                         } else {
-                            Some(ffi_common::ffi_core::string::string_from_c(#field_name))
+                            Some(ffi_common::core::string::string_from_c(#field_name))
                         }
                     }
                 } else {
-                    quote!(ffi_common::ffi_core::string::string_from_c(#field_name))
+                    quote!(ffi_common::core::string::string_from_c(#field_name))
                 }
             }
             NativeType::Uuid => {
@@ -241,11 +241,11 @@ impl NativeTypeData {
                         if #field_name.is_null() {
                             None
                         } else {
-                            Some(ffi_common::ffi_core::string::uuid_from_c(#field_name))
+                            Some(ffi_common::core::string::uuid_from_c(#field_name))
                         }
                     }
                 } else {
-                    quote!(ffi_common::ffi_core::string::uuid_from_c(#field_name))
+                    quote!(ffi_common::core::string::uuid_from_c(#field_name))
                 }
             }
         }
@@ -312,11 +312,11 @@ impl NativeTypeData {
                     if self.is_option {
                         quote!(
                             #accessor.as_ref().map_or(ptr::null(), |s| {
-                                ffi_common::ffi_core::ffi_string!(s.to_string())
+                                ffi_common::core::ffi_string!(s.to_string())
                             })
                         )
                     } else {
-                        quote!(ffi_common::ffi_core::ffi_string!(#accessor.to_string()))
+                        quote!(ffi_common::core::ffi_string!(#accessor.to_string()))
                     }
                 }
             }

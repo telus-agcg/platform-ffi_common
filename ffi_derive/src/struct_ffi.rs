@@ -46,7 +46,7 @@ pub(super) fn custom(
     quote!(
         #[allow(box_pointers, missing_docs)]
         pub mod #module_name {
-            use ffi_common::ffi_core::{ffi_string, declare_opaque_type_ffi, datetime::*, paste, string::FFIArrayString};
+            use ffi_common::core::{ffi_string, declare_opaque_type_ffi, datetime::*, paste, string::FFIArrayString};
             use std::os::raw::c_char;
             use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
             use super::*;

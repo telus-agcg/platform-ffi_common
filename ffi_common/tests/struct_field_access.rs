@@ -3,12 +3,12 @@
 //!
 
 use chrono::NaiveDateTime;
-use ffi_common::ffi_core::{*, datetime::FFIArrayTimeStamp, string::FFIArrayString};
+use ffi_common::{core::{*, datetime::FFIArrayTimeStamp, string::FFIArrayString}, derive};
 use std::{convert::TryInto, ffi::CStr};
 use uuid::Uuid;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, ffi_derive::FFI)]
+#[derive(Clone, Copy, Debug, PartialEq, derive::FFI)]
 pub enum TestEnum {
     Variant1,
     Variant2,
@@ -22,7 +22,7 @@ impl Default for TestEnum {
 
 use crate::test_enum_ffi::FFIArrayTestEnum;
 
-#[derive(Debug, Clone, ffi_derive::FFI)]
+#[derive(Debug, Clone, derive::FFI)]
 pub struct TestStruct {
     string: String,
     i32_collection: Vec<i32>,

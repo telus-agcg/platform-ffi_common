@@ -25,7 +25,7 @@ pub(super) fn build(module_name: &Ident, type_name: &Ident, out_dir: &str) -> To
     quote! {
         #[allow(missing_docs)]
         pub mod #module_name {
-            use ffi_common::ffi_core::{error, paste, declare_value_type_ffi};
+            use ffi_common::core::{error, paste, declare_value_type_ffi};
             use super::*;
 
             #[no_mangle]

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use ffi_common::ffi_core::ffi_string;
+use ffi_common::core::ffi_string;
 use ffi_derive::FFI;
 use std::str::FromStr;
 

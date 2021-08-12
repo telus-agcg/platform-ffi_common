@@ -71,7 +71,7 @@ impl FieldFFI {
         let conversion = self.native_type_data.rust_to_ffi_value(accessor, &self.attributes);
 
         quote! {
-            ffi_common::ffi_core::paste! {
+            ffi_common::core::paste! {
                 #[no_mangle]
                 #[doc = "Get `" #field_name "` for this `" #type_name"`."]
                 pub unsafe extern "C" fn #getter_name(
