@@ -12,7 +12,7 @@ use heck::SnakeCase;
 use parsing::FieldAttributes;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Field, Ident};
+use syn::{Field, Ident, spanned::Spanned};
 
 /// Represents the components of the generated FFI for a field.
 #[derive(Debug)]
@@ -66,9 +66,9 @@ impl FieldFFI {
         let getter_name = &self.getter_name();
         let ffi_type = &self
             .native_type_data
-            .ffi_type(self.attributes.expose_as_ident(), &Context::Return);
+            .ffi_type(self.attributes.expose_as_ident(), Context::Return);
         let accessor = quote!(data.#field_name);
-        let conversion = self.native_type_data.rust_to_ffi_value(accessor, &self.attributes);
+        let conversion = self.native_type_data.rust_to_ffi_value(&accessor, &self.attributes);
 
         quote! {
             ffi_common::core::paste! {
@@ -92,7 +92,7 @@ impl FieldFFI {
         let field_name = &self.field_name;
         let ffi_type = &self
             .native_type_data
-            .ffi_type(self.attributes.expose_as_ident(), &Context::Argument);
+            .ffi_type(self.attributes.expose_as_ident(), Context::Argument);
         quote!(#field_name: #ffi_type,)
     }
 
@@ -114,7 +114,7 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
         let field_name = field
             .ident
             .as_ref()
-            .unwrap_or_else(|| panic!("Expected field: {:?} to have an identifier.", &field))
+            .unwrap_or_else(|| proc_macro_error::abort!(field.span(), "Expected field to have an identifier."))
             .clone();
         let attributes = FieldAttributes::from(&*field.attrs);
         let (wrapping_type, unaliased_field_type) = match parsing::get_segment_for_field(&field.ty)
@@ -124,10 +124,11 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
                     parsing::separate_wrapping_type_from_inner_type(segment);
                 (
                     wrapping_type,
-                    alias_resolution::resolve_type_alias(&ident, alias_modules, None).unwrap(),
+                    alias_resolution::resolve_type_alias(&ident, alias_modules, None)
+                        .unwrap_or_else(|err| proc_macro_error::abort!(field.span(), "Alias resolution error: {}", err)),
                 )
             }
-            None => panic!("No path segment (field without a type?)"),
+            None => proc_macro_error::abort!(field.ty.span(), "No path segment (field without a type?"),
         };
 
         // If this has a raw attribute, bypass the normal `NativeType` logic and use `NativeType::raw`.
@@ -139,7 +140,7 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
 
         let native_type_data = NativeTypeData::from((field_type, wrapping_type));
 
-        FieldFFI {
+        Self {
             type_name,
             field_name,
             native_type_data,

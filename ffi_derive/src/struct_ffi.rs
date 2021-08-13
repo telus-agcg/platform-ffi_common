@@ -3,7 +3,7 @@
 //!
 
 use ffi_internals::{
-    consumer::consumer_struct::ConsumerStruct,
+    consumer::consumer_struct::{CustomConsumerStructInputs, ConsumerStruct},
     parsing,
     parsing::CustomAttributes,
     struct_internals::struct_ffi::{StructFFI, StructInputs},
@@ -12,14 +12,13 @@ use ffi_internals::{
     heck::SnakeCase,
 };
 use proc_macro2::TokenStream;
-use std::convert::TryFrom;
 
 pub(super) fn custom(
     type_name: &Ident,
     module_name: &Ident,
     crate_root: &str,
-    custom_attributes: CustomAttributes,
-    required_imports: Vec<Path>,
+    custom_attributes: &CustomAttributes,
+    required_imports: &[Path],
     out_dir: &str,
 ) -> TokenStream {
     let init_fn_name = format_ident!("{}_init", &type_name.to_string().to_snake_case());
@@ -29,19 +28,21 @@ pub(super) fn custom(
     let custom_ffi =
         parsing::parse_custom_ffi_type(custom_path, &type_name.to_string(), &init_fn_name);
 
-    let consumer = ConsumerStruct::custom(
-        type_name.to_string(),
+    let inputs = CustomConsumerStructInputs {
+        type_name: type_name.to_string(),
         required_imports,
         custom_attributes,
-        init_fn_name.to_string(),
-        custom_ffi.0.as_ref(),
-        custom_ffi.1.as_ref(),
-        free_fn_name.to_string(),
-        clone_fn_name.to_string(),
-    );
+        init_fn_name: init_fn_name.to_string(),
+        init_args: custom_ffi.0.as_ref(),
+        getters: custom_ffi.1.as_ref(),
+        free_fn_name: free_fn_name.to_string(),
+        clone_fn_name: clone_fn_name.to_string(),
+    };
+    let consumer = ConsumerStruct::from(inputs);
 
     let file_name = format!("{}.swift", type_name.to_string());
-    ffi_internals::write_consumer_file(&file_name, consumer.into(), out_dir);
+    ffi_internals::write_consumer_file(&file_name, String::from(&consumer), out_dir)
+        .unwrap_or_else(|err| proc_macro_error::abort!(type_name.span(), "Error writing consumer file: {}", err));
 
     quote!(
         #[allow(box_pointers, missing_docs)]
@@ -62,27 +63,26 @@ pub(super) fn custom(
 }
 
 pub(super) fn standard(
-    module_name: Ident,
+    module_name: &Ident,
     type_name: &Ident,
-    data: DataStruct,
-    alias_modules: Vec<String>,
-    required_imports: Vec<Path>,
+    data: &DataStruct,
+    alias_modules: &[String],
+    required_imports: &[Path],
     out_dir: &str,
 ) -> TokenStream {
-    let struct_ffi = StructFFI::try_from(&StructInputs {
+    let struct_ffi = StructFFI::from(&StructInputs {
         module_name,
         type_name: type_name.clone(),
         data,
         alias_modules,
         required_imports,
-    })
-    .expect("Unsupported struct data");
+    });
     let file_name = format!("{}.swift", type_name.to_string());
     ffi_internals::write_consumer_file(
         &file_name,
-        ConsumerStruct::from(&struct_ffi).into(),
+        String::from(&ConsumerStruct::from(&struct_ffi)),
         out_dir,
-    );
+    ).unwrap_or_else(|err| proc_macro_error::abort!(type_name.span(), "Error writing consumer file: {}", err));
 
     struct_ffi.into()
 }

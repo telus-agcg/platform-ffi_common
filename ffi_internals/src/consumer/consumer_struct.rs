@@ -4,13 +4,7 @@
 //! native getters for reading properties from the Rust struct.
 //!
 
-use crate::{
-    native_type_data,
-    struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
-    parsing::CustomAttributes,
-    heck::{CamelCase, MixedCase},
-    syn::{Ident, Path, Type}
-};
+use crate::{heck::MixedCase, native_type_data::NativeTypeData, parsing::CustomAttributes, struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI}, syn::{Ident, Path, Type}};
 
 /// Contains the data required to generate a consumer type, and associated functions for doing so.
 ///
@@ -63,27 +57,7 @@ impl ConsumerStruct {
     /// correctly wraps the generated FFI module.
     ///
     fn type_definition(&self) -> String {
-        let additional_imports: Vec<String> = self
-            .required_imports
-            .iter()
-            .map(|path| {
-                let crate_name = path
-                    .segments
-                    .first()
-                    .unwrap()
-                    .ident
-                    .to_string()
-                    .to_camel_case();
-                let type_name = path
-                    .segments
-                    .last()
-                    .unwrap()
-                    .ident
-                    .to_string()
-                    .to_camel_case();
-                format!("import class {}.{}", crate_name, type_name)
-            })
-            .collect();
+        let additional_imports = super::build_imports(&*self.required_imports).join("\n");
         format!(
             r#"
 {common_framework}
@@ -107,7 +81,7 @@ public final class {class} {{
             common_framework = option_env!("FFI_COMMON_FRAMEWORK")
                 .map(|f| format!("import {}", f))
                 .unwrap_or_default(),
-            additional_imports = additional_imports.join("\n"),
+            additional_imports = additional_imports,
             class = self.type_name,
             init_impl = self.init_impl(),
             free = self.free_fn_name,
@@ -250,30 +224,30 @@ extension {}: NativeArrayData {{
     }
 }
 
-impl ConsumerStruct {
+pub struct CustomConsumerStructInputs<'a> {
+    pub type_name: String,
+    pub required_imports: &'a [Path],
+    pub custom_attributes: &'a CustomAttributes,
+    pub init_fn_name: String,
+    pub init_args: &'a [(Ident, Type)],
+    pub getters: &'a [(Ident, Type)],
+    pub free_fn_name: String,
+    pub clone_fn_name: String,
+}
+
+impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
     /// Returns a `ConsumerStruct` for a type that defines its own custom FFI.
     ///
-    #[must_use]
-    pub fn custom(
-        type_name: String,
-        required_imports: Vec<Path>,
-        custom_attributes: CustomAttributes,
-        init_fn_name: String,
-        init_args: &[(Ident, Type)],
-        getters: &[(Ident, Type)],
-        free_fn_name: String,
-        clone_fn_name: String,
-    ) -> Self {
-        let arg_count = init_args.len();
-        let (consumer_init_args, ffi_init_args) = init_args.iter().enumerate().fold(
+    fn from(inputs: CustomConsumerStructInputs<'_>) -> Self {
+        let arg_count = inputs.init_args.len();
+        let (consumer_init_args, ffi_init_args) = inputs.init_args.iter().enumerate().fold(
             (String::new(), String::new()),
             |mut acc, (index, (i, t))| {
                 // Swift rejects trailing commas on argument lists.
                 let trailing_punctuation = if index < arg_count - 1 { ",\n" } else { "" };
                 // This looks like `foo: Bar,`.
                 // TODO: This is where we get the expression: String? for the Unit init. Wrong.
-                let consumer_type =
-                    native_type_data::native_type_data_for_custom(t).consumer_type(None);
+                let consumer_type = NativeTypeData::from(t).consumer_type(None);
                 acc.0.push_str(&format!(
                     "        {}: {}{}",
                     i.to_string(),
@@ -294,31 +268,31 @@ impl ConsumerStruct {
             },
         );
 
-        let type_prefix = format!("get_{}_", type_name);
-        let failable_fns: Vec<&Ident> = custom_attributes
-            .failable_fns
+        let type_prefix = format!("get_{}_", inputs.type_name);
+        let failable_fns: Vec<&Ident> = inputs.custom_attributes.failable_fns
             .iter()
-            .map(|x| &x.segments.last().unwrap().ident)
+            .map(|x| super::get_segment_ident(x.segments.last()))
             .collect();
-        let consumer_getters = getters.iter().fold(String::new(), |mut acc, (i, t)| {
+        let consumer_getters = inputs.getters.iter().fold(String::new(), |mut acc, (getter_ident, getter_type)| {
             // We're going to give things an internal access modifier if they're failable on the
             // Rust side. This will require some additional (handwritten) Swift code for error
             // handling before they can be accessed outside of the framework that contains the
             // generated code.
-            let access_modifier = if failable_fns.contains(&i) {
+            let access_modifier = if failable_fns.contains(&getter_ident) {
                 "internal"
             } else {
                 "public"
             };
-            let consumer_type =
-                native_type_data::native_type_data_for_custom(t).consumer_type(None);
-            let consumer_getter_name = i
+            let consumer_type = NativeTypeData::from(getter_type).consumer_type(None);
+            
+            let consumer_getter_name = match getter_ident
                 .to_string()
                 .split(&type_prefix)
                 .last()
-                .unwrap()
-                .to_string()
-                .to_mixed_case();
+                .map(MixedCase::to_mixed_case) {
+                    Some(s) => s,
+                    None => proc_macro_error::abort!(getter_ident.span(), "Bad string segment"),
+                };
 
             acc.push_str(&format!(
                 "
@@ -330,21 +304,21 @@ impl ConsumerStruct {
                 consumer_getter_name,
                 consumer_type,
                 consumer_type,
-                i.to_string()
+                getter_ident.to_string()
             ));
             acc
         });
 
         Self {
-            type_name,
-            required_imports,
+            type_name: inputs.type_name,
+            required_imports: inputs.required_imports.to_owned(),
             consumer_init_args,
             ffi_init_args,
             consumer_getters,
-            init_fn_name,
-            free_fn_name,
-            clone_fn_name,
-            failable_init: custom_attributes.failable_init,
+            init_fn_name: inputs.init_fn_name,
+            free_fn_name: inputs.free_fn_name,
+            clone_fn_name: inputs.clone_fn_name,
+            failable_init: inputs.custom_attributes.failable_init,
         }
     }
 }
@@ -367,8 +341,9 @@ impl From<&StructFFI> for ConsumerStruct {
     }
 }
 
-impl From<ConsumerStruct> for String {
-    fn from(consumer: ConsumerStruct) -> Self {
+impl From<&ConsumerStruct> for String {
+
+    fn from(consumer: &ConsumerStruct) -> Self {
         [
             super::HEADER,
             &consumer.type_definition(),

@@ -156,7 +156,7 @@ pub fn parse_alias_module(resolution_key: String, module: ItemMod) -> Result<Ite
 pub(super) fn resolve_type_alias(
     type_name: &Ident,
     relevant_modules: &[String],
-    alias_map_path: Option<MutexGuard<String>>,
+    alias_map_path: Option<MutexGuard<'_, String>>,
 ) -> Result<Ident, Error> {
     // Use the path that was passed in (if we already have it and therefore have a lock on it), or
     // get a lock on the path to the alias map file.

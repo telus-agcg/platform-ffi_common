@@ -1,4 +1,4 @@
-use syn::{Ident, Meta, NestedMeta, Path};
+use syn::{Ident, Meta, NestedMeta, Path, spanned::Spanned};
 
 pub struct ImplAttributes {
     pub ffi_imports: Vec<Path>,
@@ -11,7 +11,7 @@ impl From<syn::AttributeArgs> for ImplAttributes {
         let mut ffi_imports = vec![];
         let mut consumer_imports = vec![];
         let mut raw_types = vec![];
-        for arg in args.iter() {
+        for arg in &args {
             match arg {
                 NestedMeta::Meta(m) => {
                     let paths: Vec<Path> = match m {
@@ -19,38 +19,38 @@ impl From<syn::AttributeArgs> for ImplAttributes {
                             l
                             .nested
                             .iter()
-                            .flat_map(super::parse_path_from_nested_meta)
+                            .filter_map(super::parse_path_from_nested_meta)
                             .collect()
                         },
-                        Meta::Path(_) | Meta::NameValue(_) => panic!("Unsupported meta types"),
+                        Meta::Path(_) | Meta::NameValue(_) => proc_macro_error::abort!(m.span(), "Unsupported meta type."),
                     };
                     if m.path().is_ident("ffi_imports") {
                         if !ffi_imports.is_empty() {
-                            panic!("Duplicate `ffi_imports` attributes defined for a single macro call")
+                            proc_macro_error::abort!(m.span(), "Duplicate `ffi_imports` attribute defined for a single call. This attribute must be set once at most.")
                         }
                         ffi_imports = paths
                     } else if m.path().is_ident("consumer_imports") {
                         if !consumer_imports.is_empty() {
-                            panic!("Duplicate `consumer_imports` attributes defined for a single macro call")
+                            proc_macro_error::abort!(m.span(), "Duplicate `consumer_imports` attribute defined for a single call. This attribute must be set once at most.")
                         }
                         consumer_imports = paths
                     } else if m.path().is_ident("raw_types") {
                         if !raw_types.is_empty() {
-                            panic!("Duplicate `raw_types` attributes defined for a single macro call")
+                            proc_macro_error::abort!(m.span(), "Duplicate `raw_types` attribute defined for a single call. This attribute must be set once at most.")
                         }
                         raw_types = paths
                             .iter()
-                            .filter_map(|p| p.get_ident())
+                            .filter_map(syn::Path::get_ident)
                             .cloned()
                             .collect();
                     } else {
-                        panic!("Unsupported ffi attribute path: {:?}", m.path());
+                        proc_macro_error::abort!(m.span(), "Unsupported ffi attribute -- ")
                     }
                 }
-                other => panic!("Unsupported ffi attribute type: {:?}", other),
+                other @ NestedMeta::Lit(_) => proc_macro_error::abort!(other.span(), "Unsupported ffi attribute -- "),
             }
         }
-        ImplAttributes {
+        Self {
             ffi_imports,
             consumer_imports,
             raw_types,

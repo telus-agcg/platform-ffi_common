@@ -3,11 +3,11 @@
 //! consumer implementations.
 //!
 
-use crate::{native_type_data::{Context, NativeType, NativeTypeData, UnparsedNativeTypeData}, parsing::FieldAttributes};
+use crate::{native_type_data::{Context, NativeType, NativeTypeData, Unparsed}, parsing::FieldAttributes};
 use lazy_static::__Deref;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Ident, ImplItemMethod, ItemFn, PatType, Type};
+use syn::{Ident, ImplItemMethod, ItemFn, PatType, Type, spanned::Spanned};
 use std::collections::HashMap;
 
 /// Describes the various kinds of receivers we may encounter when parsing a function.
@@ -50,12 +50,8 @@ pub struct FnFFIInputs<'a> {
 impl<'a> FnFFIInputs<'a> {
     fn strip_local_alias(&self, ty: &Type) -> Type {
         if let Type::Path(type_path) = ty {
-            if let Some(backing_type) = self.local_aliases.get(&type_path.path.segments.last().unwrap().ident) {
-                backing_type.clone()
-            } else {
-                ty.deref().clone()
-            }
-            // self.local_aliases[&ty.path.segments.last().unwrap().ident].clone()
+            self.local_aliases.get(&type_path.path.segments.last().unwrap().ident)
+                .map_or_else(|| ty.deref().clone(), std::clone::Clone::clone)
         } else {
             ty.deref().clone()
         }
@@ -63,7 +59,7 @@ impl<'a> FnFFIInputs<'a> {
 }
 
 impl<'a> From<FnFFIInputs<'a>> for FnFFI {
-    fn from(inputs: FnFFIInputs) -> Self {
+    fn from(inputs: FnFFIInputs<'_>) -> Self {
         let fn_name = inputs.method.sig.ident.clone();
         let (arguments, receiver) = inputs.method.sig.inputs.iter().fold(
             (Vec::<FnParameterFFI>::new(), FnReceiver::None),
@@ -83,7 +79,7 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
             syn::ReturnType::Type(_token, ty) => {
                 let dealiased = inputs.strip_local_alias(&*ty);
                 Some(NativeTypeData::from(
-                    UnparsedNativeTypeData::initial(dealiased, inputs.raw_types, Some(inputs.self_type))
+                    Unparsed::initial(dealiased, inputs.raw_types, Some(inputs.self_type))
                 ))
             }
         };
@@ -119,7 +115,7 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
         let return_type: Option<NativeTypeData> = match &method.sig.output {
             syn::ReturnType::Default => None,
             syn::ReturnType::Type(_token, ty) => Some(NativeTypeData::from(
-                UnparsedNativeTypeData::initial(*ty.clone(), raw_types, None),
+                Unparsed::initial(*ty.clone(), raw_types, None),
             )),
         };
 
@@ -160,6 +156,7 @@ impl FnFFI {
     /// }
     /// ```
     ///
+    #[must_use]
     pub fn generate_ffi(
         &self,
         module_name: &Ident,
@@ -183,7 +180,7 @@ impl FnFFI {
             (receiver_arg, quote!(), receiver_conversion),
             |mut acc, arg| {
                 let name = arg.name.clone();
-                let ty = arg.native_type_data.ffi_type(None, &Context::Argument);
+                let ty = arg.native_type_data.ffi_type(None, Context::Argument);
                 let signature_parameter = quote!(#name: #ty, );
                 // TODO: This assumes a collection type should always be dereferenced to a slice
                 // and borrowed when passed to the native function, which is not necessarily the
@@ -214,19 +211,19 @@ impl FnFFI {
 
         let ffi_fn_name = self.ffi_fn_name(module_name);
         let native_fn_name = &self.fn_name;
-        let native_call = if self.receiver != FnReceiver::None {
-            quote!(data.#native_fn_name)
-        } else {
+        let native_call = if self.receiver == FnReceiver::None {
             if type_name.is_some() {
                 quote!(#type_name::#native_fn_name)
             } else {
                 quote!(#native_fn_name)
             }
+        } else {
+            quote!(data.#native_fn_name)
         };
         let return_type = self
             .return_type
             .as_ref()
-            .map(|r| r.ffi_type(None, &Context::Return));
+            .map(|r| r.ffi_type(None, Context::Return));
         let call_and_return = if let Some(r) = &self.return_type {
             let assignment = quote!(let return_value = #native_call(#calling_args););
             let return_conversion = if r.is_result {
@@ -235,13 +232,13 @@ impl FnFFI {
                     NativeType::String | 
                     NativeType::DateTime 
                     if !r.is_vec => {
-                        let conversion = r.rust_to_ffi_value(quote!(r), &FieldAttributes { expose_as: None, raw: false} );
+                        let conversion = r.rust_to_ffi_value(&quote!(r), &FieldAttributes { expose_as: None, raw: false} );
                         let map = quote!(ffi_common::core::try_or_set_error!(return_value.map(|r| #conversion)));
                         map
                     },
                     _ => {
                         let native_type = r.owned_native_type();
-                        let conversion = r.rust_to_ffi_value(quote!(r), &FieldAttributes { expose_as: None, raw: false} );
+                        let conversion = r.rust_to_ffi_value(&quote!(r), &FieldAttributes { expose_as: None, raw: false} );
                         let map = quote!(ffi_common::core::try_or_set_error!(return_value.map(|r| #conversion), <#native_type>::default()));
                         if r.is_vec {
                             quote! {
@@ -255,7 +252,7 @@ impl FnFFI {
                 }
             } else {
                 let accessor = quote!(return_value);
-                r.rust_to_ffi_value(accessor, &FieldAttributes { expose_as: None, raw: false} )
+                r.rust_to_ffi_value(&accessor, &FieldAttributes { expose_as: None, raw: false} )
             };
             quote! {
                 #assignment
@@ -300,10 +297,10 @@ impl From<(&PatType, Vec<Ident>, Option<Ident>)> for FnParameterFFI {
         let name = if let syn::Pat::Ident(pat) = &*arg.pat {
             pat.ident.clone()
         } else {
-            panic!("Anonymous parameter (not allowed in Rust 2018): {:?}", arg);
+            proc_macro_error::abort!(arg.span(), "Anonymous parameter (not allowed in Rust 2018): {:?}");
         };
         let native_type_data =
-            NativeTypeData::from(UnparsedNativeTypeData::initial(*arg.ty.clone(), raw_types, self_type));
+            NativeTypeData::from(Unparsed::initial(*arg.ty.clone(), raw_types, self_type));
         Self {
             name,
             native_type_data,

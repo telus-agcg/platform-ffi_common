@@ -140,6 +140,7 @@ impl ImplFFI {
         )
     }
 
+    #[must_use]
     pub fn generate_ffi(&self) -> TokenStream {
         let mod_name = self.module_name();
         let imports = self.ffi_imports.iter().fold(quote!(), |mut stream, path| {

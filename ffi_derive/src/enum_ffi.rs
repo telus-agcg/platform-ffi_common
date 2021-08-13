@@ -20,7 +20,8 @@ pub(super) fn build(module_name: &Ident, type_name: &Ident, out_dir: &str) -> To
     };
 
     let file_name = format!("{}.swift", type_name.to_string());
-    ffi_internals::write_consumer_file(&file_name, consumer.into(), out_dir);
+    ffi_internals::write_consumer_file(&file_name, consumer.into(), out_dir)
+        .unwrap_or_else(|err| proc_macro_error::abort!("Error writing consumer file: {}", err));
 
     quote! {
         #[allow(missing_docs)]

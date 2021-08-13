@@ -266,7 +266,9 @@
 //! ```
 //!
 
+#![deny(unused_extern_crates, missing_docs)]
 #![warn(
+    box_pointers,
     clippy::all,
     clippy::correctness,
     clippy::nursery,
@@ -274,48 +276,44 @@
     future_incompatible,
     missing_copy_implementations,
     nonstandard_style,
+    rust_2018_idioms,
     trivial_casts,
     trivial_numeric_casts,
-    unreachable_pub,
     unused_qualifications,
     unused_results,
     variant_size_differences
 )]
-#![forbid(missing_docs, unused_extern_crates, unused_imports)]
+#![allow(box_pointers)]
 
 mod enum_ffi;
 mod struct_ffi;
 
-use ffi_internals::{
-    alias_resolution,
-    consumer,
-    impl_internals::{
+use ffi_internals::{alias_resolution, heck::SnakeCase, impl_internals::{
         impl_ffi::{ImplFFI, ImplInputs},
         fn_ffi::FnFFI
-    },
+    }, 
     parsing,
-    quote::{format_ident, ToTokens},
-    syn::{parse_macro_input, AttributeArgs, Data, DeriveInput, ItemImpl, ItemFn, ItemMod, Type},
-    heck::SnakeCase,
-};
+    quote::{format_ident, ToTokens}, syn::{AttributeArgs, Data, DeriveInput, ItemFn, ItemImpl, ItemMod, Type, parse_macro_input, spanned::Spanned}};
 use proc_macro::TokenStream;
+use proc_macro_error::{proc_macro_error, abort};
 
 /// Derive an FFI for a native type definition.
 ///
-/// # Panics
+/// # Proc Macro Errors
 /// 
-/// Panics if invoked for an unsupported type (such as a union or non-repr(C) enum), or if any 
+/// Fails if invoked for an unsupported type (such as a union or non-repr(C) enum), or if any 
 /// unsupported types are encountered when processing `input`.
 /// 
 #[proc_macro_derive(FFI, attributes(ffi))]
+#[proc_macro_error]
 pub fn ffi_derive(input: TokenStream) -> TokenStream {
     let ast: DeriveInput = ffi_internals::syn::parse(input).unwrap();
 
     // Build the trait implementation
-    impl_ffi_macro(ast)
+    impl_ffi_macro(&ast)
 }
 
-fn impl_ffi_macro(ast: DeriveInput) -> TokenStream {
+fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
     // Get the relative file paths from the attribute args, prefix them with the cargo
     // manifest dir, then build a hash map for resolving type aliases.
     let crate_root = std::env::var("CARGO_MANIFEST_DIR").expect(
@@ -325,35 +323,31 @@ fn impl_ffi_macro(ast: DeriveInput) -> TokenStream {
     let type_name = ast.ident.clone();
     let module_name = format_ident!("{}_ffi", &type_name.to_string().to_snake_case());
     let struct_attributes = parsing::StructAttributes::from(&*ast.attrs);
-    match ast.data {
+    match &ast.data {
         Data::Struct(data) => {
-            if let Some(custom_attributes) = struct_attributes.custom_attributes {
-                struct_ffi::custom(
-                    &type_name,
-                    &module_name,
-                    &crate_root,
-                    custom_attributes,
-                    struct_attributes.required_imports,
-                    &out_dir,
-                )
-            } else {
-                struct_ffi::standard(
-                    module_name,
-                    &type_name,
-                    data,
-                    struct_attributes.alias_modules,
-                    struct_attributes.required_imports,
-                    &out_dir,
-                )
-            }
+            struct_attributes.custom_attributes.as_ref().map_or_else(|| struct_ffi::standard(
+                &module_name,
+                &type_name,
+                data,
+                &*struct_attributes.alias_modules,
+                &*struct_attributes.required_imports,
+                &out_dir,
+            ), |custom_attributes| struct_ffi::custom(
+                &type_name,
+                &module_name,
+                &crate_root,
+                custom_attributes,
+                &struct_attributes.required_imports,
+                &out_dir,
+            ))
         }
         Data::Enum(_) => {
             if !parsing::is_repr_c(&ast.attrs) {
-                panic!("Non-repr(C) enums are not supported.")
+                abort!(ast.span(), "Non-repr(C) enums are not supported.");
             }
             enum_ffi::build(&module_name, &type_name, &out_dir)
         }
-        Data::Union(_) => panic!("Unions are not supported"),
+        Data::Union(_) => abort!(ast.span(), "Unions are not supported"),
     }
     .into()
 }
@@ -367,37 +361,40 @@ fn out_dir() -> String {
 /// Parses a module that contains typealiases and stores that information for other `ffi_derive` calls
 /// to use later in resolving aliases.
 /// 
-/// # Panics
+/// # Proc Macro Errors
 /// 
-/// Panics if this is not invoked on a module, or if the resolution JSON file cannot be read or 
+/// Fails if this is not invoked on a module, or if the resolution JSON file cannot be read or 
 /// written to.
 ///
 #[proc_macro_attribute]
+#[proc_macro_error]
 pub fn alias_resolution(attr: TokenStream, item: TokenStream) -> TokenStream {
     let resolution_key = attr.to_string();
     let module = parse_macro_input!(item as ItemMod);
+    let err_span = module.span();
     alias_resolution::parse_alias_module(resolution_key, module)
-        .unwrap()
+        .unwrap_or_else(|err| abort!(err_span, "Error parsing alias module: {}", err))
         .into_token_stream()
         .into()
 }
 
 /// Parses an impl and produces a module exposing that impl's functions over FFI.
 ///
-/// # Panics
+/// # Proc Macro Errors
 /// 
-/// Panics if invoked on an unsupported impl, such as: one that doesn't implement a trait, one 
+/// Fails if invoked on an unsupported impl, such as: one that doesn't implement a trait, one 
 /// that doesn't have a `Self` type, or one whose types use aliases that have not been marked 
 /// `derive(ffi_derive::alias_resolution)`.
 /// 
 #[proc_macro_attribute]
+#[proc_macro_error]
 pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as AttributeArgs);
     let impl_attributes = parsing::ImplAttributes::from(args);
     let item_impl = parse_macro_input!(item as ItemImpl);
 
     let trait_name = item_impl.trait_.as_ref().map_or_else(
-        || panic!("No trait info found"),
+        || abort!(item_impl.span(), "No trait info found"),
         |t| t.1.segments.last().unwrap().ident.clone(),
     );
     let type_name = if let Type::Path(ty) = &*item_impl.self_ty {
@@ -406,10 +403,10 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         if let Type::Path(ty) = &*r.elem {
             ty.path.segments.last().unwrap().ident.clone()
         } else {
-            panic!("Could not find self type for impl: {:?}", r);    
+            abort!(r.span(), "Could not find self type for impl");
         }
     } else {
-        panic!("Could not find self type for impl: {:?}", item_impl);
+        abort!(item_impl.self_ty.span(), "Could not find self type for impl");
     };
 
     let impl_ffi = ImplFFI::from(ImplInputs {
@@ -421,8 +418,9 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         type_name,
     });
     let out_dir = out_dir();
-    let file_name =  consumer::consumer_impl::consumer_file_name(&impl_ffi);
-    ffi_internals::write_consumer_file(&file_name, consumer::consumer_impl::generate_consumer(&impl_ffi, ffi_internals::consumer::HEADER), &out_dir);
+    let file_name = impl_ffi.consumer_file_name();
+    ffi_internals::write_consumer_file(&file_name, impl_ffi.generate_consumer(ffi_internals::consumer::HEADER), &out_dir)
+        .unwrap_or_else(|err| abort!("Error writing consumer file: {}", err));
     let ffi = impl_ffi.generate_ffi();
 
     let output = ffi_internals::quote::quote! {
@@ -437,9 +435,9 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 /// Parses a fn and produces a module exposing that function over FFI.
 ///
 #[proc_macro_attribute]
+#[proc_macro_error]
 pub fn expose_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = ffi_internals::syn::parse_macro_input!(attr as AttributeArgs);
-    // let impl_attributes = parsing::ImplAttributes::from(args);
     let fn_attributes = parsing::FnAttributes::from(args);
     let item_fn = ffi_internals::syn::parse_macro_input!(item as ItemFn);
 
@@ -451,7 +449,16 @@ pub fn expose_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     let common_import = option_env!("FFI_COMMON_FRAMEWORK")
         .map(|f| format!("import {}", f))
         .unwrap_or_default();
-    ffi_internals::write_consumer_file(&file_name, consumer::consumer_fn::generate_consumer_extension(&fn_ffi, ffi_internals::consumer::HEADER, &fn_attributes.extend_type.to_string(), &module_name, Some(&common_import)), &out_dir);
+    ffi_internals::write_consumer_file(
+        &file_name,
+        fn_ffi.generate_consumer_extension(
+            ffi_internals::consumer::HEADER,
+            &fn_attributes.extend_type.to_string(),
+            &module_name,
+            Some(&common_import)
+        ),
+        &out_dir
+    ).unwrap_or_else(|err| abort!(item_fn.span(), "Error writing consumer file: {}", err));
 
     let ffi = fn_ffi.generate_ffi(&module_name, None, None);
 

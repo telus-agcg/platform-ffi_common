@@ -1,4 +1,4 @@
-use syn::{Attribute, Lit, Meta, NestedMeta, Path};
+use syn::{Attribute, Lit, Meta, NestedMeta, Path, spanned::Spanned};
 
 pub struct StructAttributes {
     pub alias_modules: Vec<String>,
@@ -18,7 +18,7 @@ impl From<&[Attribute]> for StructAttributes {
         let mut alias_modules = vec![];
         let mut custom_attributes: Option<CustomAttributes> = None;
         let mut required_imports = vec![];
-        for meta_item in attrs.iter().flat_map(super::parse_ffi_meta).flatten() {
+        for meta_item in attrs.iter().flat_map(super::parse_ffi_meta) {
             match &meta_item {
                 NestedMeta::Meta(Meta::NameValue(m)) if m.path.is_ident("custom") => {
                     if let Lit::Str(lit) = &m.lit {
@@ -32,7 +32,7 @@ impl From<&[Attribute]> for StructAttributes {
                 }
                 NestedMeta::Meta(Meta::List(l)) if l.path.is_ident("required_imports") => {
                     required_imports
-                        .extend(l.nested.iter().flat_map(super::parse_path_from_nested_meta));
+                        .extend(l.nested.iter().filter_map(super::parse_path_from_nested_meta));
                 }
                 NestedMeta::Meta(Meta::Path(m)) if m.is_ident("failable_init") => {
                     let mut c = custom_attributes.unwrap_or_default();
@@ -41,15 +41,15 @@ impl From<&[Attribute]> for StructAttributes {
                 }
                 NestedMeta::Meta(Meta::List(l)) if l.path.is_ident("failable_fns") => {
                     let mut c = custom_attributes.unwrap_or_default();
-                    c.failable_fns.extend(l.nested.iter().flat_map(super::parse_path_from_nested_meta));
+                    c.failable_fns.extend(l.nested.iter().filter_map(super::parse_path_from_nested_meta));
                     custom_attributes = Some(c);
                 }
                 other => {
-                    panic!("Unsupported ffi attribute type: {:?}", other);
+                    proc_macro_error::abort!(other.span(), "Unsupported ffi attribute -- only `custom`, `alias_modules`, `required_imports`, `failable_init`, and `failable_fns` are allowed in this position.");
                 }
             }
         }
-        StructAttributes {
+        Self {
             alias_modules,
             custom_attributes,
             required_imports,
