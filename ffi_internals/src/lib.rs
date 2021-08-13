@@ -76,14 +76,18 @@ pub fn consumer_type_for(native_type: &str, option: bool) -> String {
 }
 
 /// Writes `contents` to `file_name` in `out_dir`.
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an `std::io::Error` if:
 /// 1. `out_dir` does not already exist or we cannot create it.
 /// 1. we cannot write `contents` to `output_file`.
-/// 
-pub fn write_consumer_file(file_name: &str, contents: String, out_dir: &str) -> Result<(), std::io::Error> {
+///
+pub fn write_consumer_file(
+    file_name: &str,
+    contents: String,
+    out_dir: &str,
+) -> Result<(), std::io::Error> {
     let consumer_dir = create_consumer_dir(out_dir)?;
     let output_file = format!("{}/{}", consumer_dir, file_name);
     std::fs::write(&output_file, contents)?;

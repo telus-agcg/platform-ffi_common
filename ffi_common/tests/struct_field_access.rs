@@ -3,7 +3,10 @@
 //!
 
 use chrono::NaiveDateTime;
-use ffi_common::{core::{*, datetime::FFIArrayTimeStamp, string::FFIArrayString}, derive};
+use ffi_common::{
+    core::{datetime::FFIArrayTimeStamp, string::FFIArrayString, *},
+    derive,
+};
 use std::{convert::TryInto, ffi::CStr};
 use uuid::Uuid;
 

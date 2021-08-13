@@ -11,8 +11,9 @@ use crate::{
 use heck::SnakeCase;
 use parsing::FieldAttributes;
 use proc_macro2::TokenStream;
+use proc_macro_error::abort;
 use quote::{format_ident, quote};
-use syn::{Field, Ident, spanned::Spanned};
+use syn::{spanned::Spanned, Field, Ident};
 
 /// Represents the components of the generated FFI for a field.
 #[derive(Debug)]
@@ -68,7 +69,9 @@ impl FieldFFI {
             .native_type_data
             .ffi_type(self.attributes.expose_as_ident(), Context::Return);
         let accessor = quote!(data.#field_name);
-        let conversion = self.native_type_data.rust_to_ffi_value(&accessor, &self.attributes);
+        let conversion = self
+            .native_type_data
+            .rust_to_ffi_value(&accessor, &self.attributes);
 
         quote! {
             ffi_common::core::paste! {
@@ -114,7 +117,7 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
         let field_name = field
             .ident
             .as_ref()
-            .unwrap_or_else(|| proc_macro_error::abort!(field.span(), "Expected field to have an identifier."))
+            .unwrap_or_else(|| abort!(field.span(), "Expected field to have an identifier."))
             .clone();
         let attributes = FieldAttributes::from(&*field.attrs);
         let (wrapping_type, unaliased_field_type) = match parsing::get_segment_for_field(&field.ty)
@@ -125,10 +128,14 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
                 (
                     wrapping_type,
                     alias_resolution::resolve_type_alias(&ident, alias_modules, None)
-                        .unwrap_or_else(|err| proc_macro_error::abort!(field.span(), "Alias resolution error: {}", err)),
+                        .unwrap_or_else(|err| {
+                            abort!(field.span(), "Alias resolution error: {}", err)
+                        }),
                 )
             }
-            None => proc_macro_error::abort!(field.ty.span(), "No path segment (field without a type?"),
+            None => {
+                abort!(field.ty.span(), "No path segment (field without a type?")
+            }
         };
 
         // If this has a raw attribute, bypass the normal `NativeType` logic and use `NativeType::raw`.

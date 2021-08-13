@@ -3,13 +3,16 @@
 //! related FFI and consumer types.
 //!
 
-use crate::{parsing, parsing::{FieldAttributes, WrappingType}};
+use crate::{
+    parsing,
+    parsing::{FieldAttributes, WrappingType},
+};
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
-use proc_macro_error::OptionExt;
+use proc_macro_error::{abort, OptionExt};
 use quote::{format_ident, quote};
-use std::{convert::TryFrom};
-use syn::{Ident, Type, spanned::Spanned};
+use std::convert::TryFrom;
+use syn::{spanned::Spanned, Ident, Type};
 
 static STRING: &str = "String";
 static STR: &str = "str";
@@ -113,7 +116,7 @@ pub struct NativeTypeData {
     ///
     pub is_cow: bool,
     /// True if we're dealing with a borrowed reference to `native_type`./
-    /// 
+    ///
     pub is_borrow: bool,
 }
 
@@ -151,7 +154,7 @@ impl NativeTypeData {
                     // The expose_as type will take care of its own optionality and cloning; all
                     // we need to do is make sure the pointer is safe (if this field is optional),
                     // then let it convert with `into()`.
-                    let (conversion_or_borrow, none) = if self.is_borrow { 
+                    let (conversion_or_borrow, none) = if self.is_borrow {
                         (quote!(&*#field_name), quote!(&None))
                     } else {
                         (quote!((*Box::from_raw(#field_name)).into()), quote!(None))
@@ -170,7 +173,7 @@ impl NativeTypeData {
                         }
                     }
                 } else if self.is_option {
-                    let (conversion_or_borrow, none) = if self.is_borrow { 
+                    let (conversion_or_borrow, none) = if self.is_borrow {
                         (quote!(Some(&*#field_name)), quote!(&None))
                     } else {
                         (quote!(Some(*Box::from_raw(#field_name))), quote!(None))
@@ -183,7 +186,7 @@ impl NativeTypeData {
                         }
                     }
                 } else {
-                    let conversion_or_borrow = if self.is_borrow { 
+                    let conversion_or_borrow = if self.is_borrow {
                         quote!(&*#field_name)
                     } else {
                         quote!(*Box::from_raw(#field_name))
@@ -247,7 +250,11 @@ impl NativeTypeData {
     }
 
     #[must_use]
-    pub fn rust_to_ffi_value(&self, accessor: &TokenStream, attributes: &FieldAttributes) -> TokenStream {
+    pub fn rust_to_ffi_value(
+        &self,
+        accessor: &TokenStream,
+        attributes: &FieldAttributes,
+    ) -> TokenStream {
         if self.is_vec {
             if self.is_option {
                 quote!(#accessor.as_deref().into())
@@ -363,28 +370,28 @@ pub struct Unparsed {
     pub ty: Type,
 
     /// Whether `ty` was discovered inside of an `Option`.
-    /// 
+    ///
     pub is_option: bool,
 
     /// Whether `ty` was discovered inside of a `Vec`, `Array`, or slice.
-    /// 
+    ///
     pub is_collection: bool,
 
     /// Whether `ty` was discovered in the `Success` variant of a `Result`.
-    /// 
+    ///
     pub is_result: bool,
 
     /// Whether `ty` was discovered inside of a `Cow`.
-    /// 
+    ///
     pub is_cow: bool,
 
     /// Whether this field or parameter is a borrowed reference to a `ty`.
-    /// 
+    ///
     pub is_borrow: bool,
-    
+
     /// `Ident`s of types that ought to be exposed directly to the FFI in a `NativeType::Raw`, as
     /// opposed to being wrapped in a `Box`.
-    /// 
+    ///
     pub raw_types: Vec<Ident>,
 
     self_type: Option<Ident>,
@@ -448,7 +455,11 @@ impl From<Unparsed> for NativeTypeData {
                 Self::from(unparsed)
             }
             Type::Path(ty) => {
-                let segment = ty.path.segments.last().expect_or_abort("Type path has zero segments.");
+                let segment = ty
+                    .path
+                    .segments
+                    .last()
+                    .expect_or_abort("Type path has zero segments.");
                 let ident = segment.ident.clone();
                 if let Ok(generic) = SupportedGeneric::try_from(&*ident.to_string()) {
                     match generic {
@@ -466,20 +477,25 @@ impl From<Unparsed> for NativeTypeData {
                     let arguments = match &segment.arguments {
                         syn::PathArguments::AngleBracketed(arguments) => arguments,
                         syn::PathArguments::Parenthesized(_) | syn::PathArguments::None => {
-                            proc_macro_error::abort!(segment.arguments.span(), "`None` and `Parenthesized` path arguments are not currently supported.")
+                            abort!(segment.arguments.span(), "`None` and `Parenthesized` path arguments are not currently supported.")
                         }
                     };
                     // If we're looking at a `Cow`, the type wrapped in the smart pointer is the
                     // last argument. Otherwise we're looking at a `Vec`, `Option`, or `Result`, in
                     // which case the type we want is the first argument.
-                    let type_argument = if unparsed.is_cow { arguments.args.last() } else { arguments.args.first() }.expect_or_abort("Generic type has no arguments");
+                    let type_argument = if unparsed.is_cow {
+                        arguments.args.last()
+                    } else {
+                        arguments.args.first()
+                    }
+                    .expect_or_abort("Generic type has no arguments");
                     let arg = match type_argument {
                         syn::GenericArgument::Type(ty) => ty,
                         syn::GenericArgument::Binding(_)
                         | syn::GenericArgument::Lifetime(_)
                         | syn::GenericArgument::Constraint(_)
                         | syn::GenericArgument::Const(_) => {
-                            proc_macro_error::abort!(type_argument.span(), "`Lifetime`, `Binding`, `Constraint`, and `Const` generic arguments are not currently supported.")
+                            abort!(type_argument.span(), "`Lifetime`, `Binding`, `Constraint`, and `Const` generic arguments are not currently supported.")
                         }
                     };
                     unparsed.ty = arg.clone();
@@ -489,7 +505,9 @@ impl From<Unparsed> for NativeTypeData {
                     // If we have a `Self`, replace that with the actual type, since `Self` won't be
                     // in scope in our FFI module.
                     if ident == format_ident!("Self") {
-                        ident = unparsed.self_type.expect("Found 'Self' type, but no `self_type` provided to replace it with.");
+                        ident = unparsed.self_type.expect(
+                            "Found 'Self' type, but no `self_type` provided to replace it with.",
+                        );
                     }
                     let native_type = if unparsed.raw_types.contains(&ident) {
                         NativeType::Raw(ident)
@@ -522,7 +540,7 @@ impl From<Unparsed> for NativeTypeData {
                 Self::from(unparsed)
             }
             _ => {
-                proc_macro_error::abort!(unparsed.ty.span(), "Unsupported type.")
+                abort!(unparsed.ty.span(), "Unsupported type.")
             }
         }
     }
@@ -632,7 +650,11 @@ impl NativeTypeData {
             quote!(#t)
         };
         let t = if self.is_borrow { quote!(&#t) } else { t };
-        if self.is_option { quote!(Option::<#t>) } else { t }
+        if self.is_option {
+            quote!(Option::<#t>)
+        } else {
+            t
+        }
     }
 
     #[must_use]
@@ -648,18 +670,21 @@ impl NativeTypeData {
         } else if self.is_borrow {
             if self.native_type == NativeType::String {
                 quote!(&str)
-            } else { 
+            } else {
                 quote!(&#t)
             }
         } else {
             t
         };
-        if self.is_option { quote!(Option::<#t>) } else { t }
+        if self.is_option {
+            quote!(Option::<#t>)
+        } else {
+            t
+        }
     }
 }
 
 impl From<&Type> for NativeTypeData {
-
     /// Returns a `NativeTypeData` describing the native type for a custom FFI type, so we can use that
     /// structure to generate the consumer structure just like we do with generated FFIs.
     ///
@@ -667,13 +692,24 @@ impl From<&Type> for NativeTypeData {
         match ffi_type {
             Type::Path(type_path) => {
                 let (ident, wrapping_type) = parsing::separate_wrapping_type_from_inner_type(
-                    type_path.path.segments.first().expect_or_abort("msg").clone(),
+                    type_path
+                        .path
+                        .segments
+                        .first()
+                        .expect_or_abort("msg")
+                        .clone(),
                 );
                 Self::from((NativeType::from(ident), wrapping_type))
             }
             Type::Ptr(p) => {
                 if let Type::Path(path) = p.elem.as_ref() {
-                    let type_name = path.path.segments.first().expect_or_abort("msg").ident.clone();
+                    let type_name = path
+                        .path
+                        .segments
+                        .first()
+                        .expect_or_abort("msg")
+                        .ident
+                        .clone();
                     // Treat pointer types as potentially optional. Since this is divorced from the
                     // struct and we can't annotate items that we're not deriving from, we can't make
                     // any guarantees about it's nullability.
@@ -697,11 +733,11 @@ impl From<&Type> for NativeTypeData {
                         }
                     }
                 } else {
-                    proc_macro_error::abort!(p.span(), "No segment in {:?}?", p);
+                    abort!(p.span(), "No segment in {:?}?", p);
                 }
             }
             _ => {
-                proc_macro_error::abort!(ffi_type.span(), "Unsupported type: {:?}", ffi_type);
+                abort!(ffi_type.span(), "Unsupported type: {:?}", ffi_type);
             }
         }
     }

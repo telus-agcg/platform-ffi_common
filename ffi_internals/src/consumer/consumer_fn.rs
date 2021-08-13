@@ -1,7 +1,7 @@
 use crate::{
-    impl_internals::fn_ffi::{FnReceiver, FnFFI},
     heck::MixedCase,
-    syn::Ident
+    impl_internals::fn_ffi::{FnFFI, FnReceiver},
+    syn::Ident,
 };
 
 impl FnFFI {
@@ -10,7 +10,11 @@ impl FnFFI {
     ///
     pub(super) fn generate_consumer(&self, module_name: &Ident) -> String {
         // Include the keyword `static` if this function doesn't take a receiver.
-        let static_keyword = if self.receiver == FnReceiver::None { "static" } else { "" };
+        let static_keyword = if self.receiver == FnReceiver::None {
+            "static"
+        } else {
+            ""
+        };
         let (return_conversion, close_conversion, return_sig) =
             if let Some(return_type) = &self.return_type {
                 let ty = return_type.consumer_type(None);
@@ -18,7 +22,7 @@ impl FnFFI {
                     if return_type.is_result {
                         "handle(result: ".to_string()
                     } else {
-                        format!("{}.fromRust(", ty) 
+                        format!("{}.fromRust(", ty)
                     },
                     ")".to_string(),
                     if return_type.is_result {
@@ -48,17 +52,27 @@ impl FnFFI {
     }
 
     #[must_use]
-    pub fn generate_consumer_extension(&self, header: &str, consumer_type: &str, module_name: &Ident, imports: Option<&str>) -> String {
+    pub fn generate_consumer_extension(
+        &self,
+        header: &str,
+        consumer_type: &str,
+        module_name: &Ident,
+        imports: Option<&str>,
+    ) -> String {
         // Include the keyword `static` if this function doesn't take a receiver.
-        let static_keyword = if self.receiver == FnReceiver::None { "static" } else { "" };
+        let static_keyword = if self.receiver == FnReceiver::None {
+            "static"
+        } else {
+            ""
+        };
         let (return_conversion, close_conversion, return_sig) =
             if let Some(return_type) = &self.return_type {
                 let ty = return_type.consumer_type(None);
                 (
                     if return_type.is_result {
-                            "handle(result: ".to_string() 
+                        "handle(result: ".to_string()
                     } else {
-                        format!("{}.fromRust(", ty) 
+                        format!("{}.fromRust(", ty)
                     },
                     ")".to_string(),
                     if return_type.is_result {
@@ -116,7 +130,7 @@ impl FnFFI {
             .map(|arg| {
                 let clone_or_borrow = if arg.native_type_data.argument_borrows_supported() {
                     "borrowReference"
-                } else { 
+                } else {
                     "clone"
                 };
                 format!("{}.{}()", arg.name.to_string(), clone_or_borrow)

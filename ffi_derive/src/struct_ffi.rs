@@ -3,13 +3,13 @@
 //!
 
 use ffi_internals::{
-    consumer::consumer_struct::{CustomConsumerStructInputs, ConsumerStruct},
+    consumer::consumer_struct::{ConsumerStruct, CustomConsumerStructInputs},
+    heck::SnakeCase,
     parsing,
     parsing::CustomAttributes,
-    struct_internals::struct_ffi::{StructFFI, StructInputs},
     quote::{format_ident, quote},
+    struct_internals::struct_ffi::{StructFFI, StructInputs},
     syn::{DataStruct, Ident, Path},
-    heck::SnakeCase,
 };
 use proc_macro2::TokenStream;
 
@@ -42,7 +42,9 @@ pub(super) fn custom(
 
     let file_name = format!("{}.swift", type_name.to_string());
     ffi_internals::write_consumer_file(&file_name, String::from(&consumer), out_dir)
-        .unwrap_or_else(|err| proc_macro_error::abort!(type_name.span(), "Error writing consumer file: {}", err));
+        .unwrap_or_else(|err| {
+            proc_macro_error::abort!(type_name.span(), "Error writing consumer file: {}", err)
+        });
 
     quote!(
         #[allow(box_pointers, missing_docs)]
@@ -82,7 +84,10 @@ pub(super) fn standard(
         &file_name,
         String::from(&ConsumerStruct::from(&struct_ffi)),
         out_dir,
-    ).unwrap_or_else(|err| proc_macro_error::abort!(type_name.span(), "Error writing consumer file: {}", err));
+    )
+    .unwrap_or_else(|err| {
+        proc_macro_error::abort!(type_name.span(), "Error writing consumer file: {}", err)
+    });
 
     struct_ffi.into()
 }

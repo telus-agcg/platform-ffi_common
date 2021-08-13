@@ -8,7 +8,7 @@ use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
-use syn::{Fields, Ident, Path, spanned::Spanned};
+use syn::{spanned::Spanned, Fields, Ident, Path};
 
 pub struct StructFFI {
     module: Ident,
@@ -58,7 +58,7 @@ pub struct StructInputs<'a> {
     pub type_name: Ident,
     pub data: &'a syn::DataStruct,
     pub alias_modules: &'a [String],
-    pub required_imports: &'a[Path],
+    pub required_imports: &'a [Path],
 }
 
 impl<'a> From<&StructInputs<'a>> for StructFFI {
@@ -67,8 +67,13 @@ impl<'a> From<&StructInputs<'a>> for StructFFI {
         // getter functions.
         let fields: Vec<FieldFFI> = match &derive.data.fields {
             Fields::Named(named) => named,
-            Fields::Unnamed(unnamed) => proc_macro_error::abort!(unnamed.span(), "Unnamed fields are not supported."),
-            Fields::Unit => proc_macro_error::abort!(derive.data.fields.span(), "Unit fields are not supported."),
+            Fields::Unnamed(unnamed) => {
+                proc_macro_error::abort!(unnamed.span(), "Unnamed fields are not supported.")
+            }
+            Fields::Unit => proc_macro_error::abort!(
+                derive.data.fields.span(),
+                "Unit fields are not supported."
+            ),
         }
         .named
         .iter()

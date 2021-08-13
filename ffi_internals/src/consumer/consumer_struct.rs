@@ -4,7 +4,13 @@
 //! native getters for reading properties from the Rust struct.
 //!
 
-use crate::{heck::MixedCase, native_type_data::NativeTypeData, parsing::CustomAttributes, struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI}, syn::{Ident, Path, Type}};
+use crate::{
+    heck::MixedCase,
+    native_type_data::NativeTypeData,
+    parsing::CustomAttributes,
+    struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
+    syn::{Ident, Path, Type},
+};
 
 /// Contains the data required to generate a consumer type, and associated functions for doing so.
 ///
@@ -269,45 +275,52 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
         );
 
         let type_prefix = format!("get_{}_", inputs.type_name);
-        let failable_fns: Vec<&Ident> = inputs.custom_attributes.failable_fns
+        let failable_fns: Vec<&Ident> = inputs
+            .custom_attributes
+            .failable_fns
             .iter()
             .map(|x| super::get_segment_ident(x.segments.last()))
             .collect();
-        let consumer_getters = inputs.getters.iter().fold(String::new(), |mut acc, (getter_ident, getter_type)| {
-            // We're going to give things an internal access modifier if they're failable on the
-            // Rust side. This will require some additional (handwritten) Swift code for error
-            // handling before they can be accessed outside of the framework that contains the
-            // generated code.
-            let access_modifier = if failable_fns.contains(&getter_ident) {
-                "internal"
-            } else {
-                "public"
-            };
-            let consumer_type = NativeTypeData::from(getter_type).consumer_type(None);
-            
-            let consumer_getter_name = match getter_ident
-                .to_string()
-                .split(&type_prefix)
-                .last()
-                .map(MixedCase::to_mixed_case) {
-                    Some(s) => s,
-                    None => proc_macro_error::abort!(getter_ident.span(), "Bad string segment"),
-                };
+        let consumer_getters =
+            inputs
+                .getters
+                .iter()
+                .fold(String::new(), |mut acc, (getter_ident, getter_type)| {
+                    // We're going to give things an internal access modifier if they're failable on the
+                    // Rust side. This will require some additional (handwritten) Swift code for error
+                    // handling before they can be accessed outside of the framework that contains the
+                    // generated code.
+                    let access_modifier = if failable_fns.contains(&getter_ident) {
+                        "internal"
+                    } else {
+                        "public"
+                    };
+                    let consumer_type = NativeTypeData::from(getter_type).consumer_type(None);
 
-            acc.push_str(&format!(
-                "
+                    let consumer_getter_name = match getter_ident
+                        .to_string()
+                        .split(&type_prefix)
+                        .last()
+                        .map(MixedCase::to_mixed_case)
+                    {
+                        Some(s) => s,
+                        None => proc_macro_error::abort!(getter_ident.span(), "Bad string segment"),
+                    };
+
+                    acc.push_str(&format!(
+                        "
     {} var {}: {} {{
         {}.fromRust({}(pointer))
     }}
     ",
-                access_modifier,
-                consumer_getter_name,
-                consumer_type,
-                consumer_type,
-                getter_ident.to_string()
-            ));
-            acc
-        });
+                        access_modifier,
+                        consumer_getter_name,
+                        consumer_type,
+                        consumer_type,
+                        getter_ident.to_string()
+                    ));
+                    acc
+                });
 
         Self {
             type_name: inputs.type_name,
@@ -342,7 +355,6 @@ impl From<&StructFFI> for ConsumerStruct {
 }
 
 impl From<&ConsumerStruct> for String {
-
     fn from(consumer: &ConsumerStruct) -> Self {
         [
             super::HEADER,
@@ -378,7 +390,11 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
                     .consumer_type(f.attributes.expose_as_ident()),
                 punct = trailing_punctuation
             ));
-            let clone_or_borrow = if f.native_type_data.is_borrow { "borrowReference" } else { "clone" };
+            let clone_or_borrow = if f.native_type_data.is_borrow {
+                "borrowReference"
+            } else {
+                "clone"
+            };
             // This looks like `foo.clone(),` or `foo.borrowReference(),`.
             acc.1.push_str(&format!(
                 "            {}.{}(){}",

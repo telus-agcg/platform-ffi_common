@@ -1,5 +1,5 @@
-use syn::{Attribute, Ident, Lit, Meta, NestedMeta, Path, spanned::Spanned};
 use proc_macro_error::emit_error;
+use syn::{spanned::Spanned, Attribute, Ident, Lit, Meta, NestedMeta, Path};
 
 /// Field-level FFI helper attributes.
 ///

@@ -1,7 +1,7 @@
 //!
 //! This crate provides low level FFI functionality for primitives, error handling, and generating
 //! FFI-safe structures for `Option` and `Vec` generics for simple struct and enum types.
-//! 
+//!
 
 #![deny(unused_extern_crates, missing_docs)]
 #![warn(

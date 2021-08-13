@@ -1,6 +1,6 @@
 //!
 //! Module for generating code for the consumer side of the ffi.
-//! 
+//!
 //! Libraries that want to generate an interface for the FFI consumer (i.e., the language on the
 //! other side of the boundary) must do the following:
 //! 1. Add `ffi_common` to `[build-dependencies] in `Cargo.toml`.
@@ -24,7 +24,7 @@
 //!         .expect("Unable to write consumer files");
 //! }
 //! ```
-//! 
+//!
 
 #![allow(clippy::module_name_repetitions)]
 
@@ -73,16 +73,15 @@ fn write_support_files(consumer_dir: &str, language: &str) -> Result<(), Error> 
     let crate_root = env!("CARGO_MANIFEST_DIR");
     let support_files = format!("{}/support/{}", crate_root, language);
 
-    std::fs::read_dir(support_files)?
-        .try_for_each(|entry| -> Result<(), Error> {
-            let entry = entry?;
-            let file_data: String = [HEADER, &std::fs::read_to_string(entry.path())?].join("\n\n");
-            std::fs::write(
-                format!("{}/{}", &consumer_dir, entry.file_name().into_string()?),
-                file_data,
-            )
-            .map_err(Error::from)
-        })
+    std::fs::read_dir(support_files)?.try_for_each(|entry| -> Result<(), Error> {
+        let entry = entry?;
+        let file_data: String = [HEADER, &std::fs::read_to_string(entry.path())?].join("\n\n");
+        std::fs::write(
+            format!("{}/{}", &consumer_dir, entry.file_name().into_string()?),
+            file_data,
+        )
+        .map_err(Error::from)
+    })
 }
 
 /// Write protocol conformance for all the supported primitive types to files in `consumer_dir`.
@@ -111,11 +110,11 @@ fn write_primitive_conformances(consumer_dir: &str) -> Result<(), std::io::Error
 }
 
 /// Turns a path segment into a camel cased string.
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if `segment` is `None`.
-/// 
+///
 fn get_segment_ident(segment: Option<&syn::PathSegment>) -> &syn::Ident {
     match segment {
         Some(segment) => &segment.ident,
@@ -124,17 +123,21 @@ fn get_segment_ident(segment: Option<&syn::PathSegment>) -> &syn::Ident {
 }
 
 /// Turns a slice of paths into a vec of consumer import statements
-/// 
+///
 /// # Errors
-/// 
+///
 /// Returns an error if any element in `paths` has zero segments.
-/// 
+///
 fn build_imports(paths: &[syn::Path]) -> Vec<String> {
     paths
         .iter()
         .map(|path| {
-            let crate_name = get_segment_ident(path.segments.first()).to_string().to_camel_case();
-            let type_name = get_segment_ident(path.segments.last()).to_string().to_camel_case();
+            let crate_name = get_segment_ident(path.segments.first())
+                .to_string()
+                .to_camel_case();
+            let type_name = get_segment_ident(path.segments.last())
+                .to_string()
+                .to_camel_case();
             format!("import class {}.{}", crate_name, type_name)
         })
         .collect()

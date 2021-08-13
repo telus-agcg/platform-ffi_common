@@ -18,9 +18,9 @@ impl ImplFFI {
     ///     }
     /// }
     /// ```
-    /// 
+    ///
     /// # Errors
-    /// 
+    ///
     /// Returns an error if `self.consumer_imports` contains invalid paths (i.e. paths with zero
     /// segments).
     ///

@@ -7,8 +7,8 @@ use super::fn_ffi::{FnFFI, FnFFIInputs};
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Ident, ImplItem, Path};
 use std::collections::HashMap;
+use syn::{Ident, ImplItem, Path};
 
 /// Describes the data required to create an `ImplFFI`.
 ///
@@ -52,19 +52,20 @@ impl From<ImplInputs> for ImplFFI {
         let (aliases, methods): (HashMap<Ident, syn::Type>, Vec<syn::ImplItemMethod>) = inputs
             .items
             .iter()
-            .fold((HashMap::new(), vec![]), |mut acc, item| {
-                match item {
-                    ImplItem::Method(item) => {
-                        acc.1.push(item.clone());
-                        acc
-                    }
-                    ImplItem::Type(item) => {
-                        let alias = item.ident.clone();
-                        let _ignored = acc.0.insert(alias, item.ty.clone());
-                        acc
-                    }
-                    ImplItem::Const(_) | ImplItem::Macro(_) | ImplItem::Verbatim(_) | ImplItem::__TestExhaustive(_) => acc,
+            .fold((HashMap::new(), vec![]), |mut acc, item| match item {
+                ImplItem::Method(item) => {
+                    acc.1.push(item.clone());
+                    acc
                 }
+                ImplItem::Type(item) => {
+                    let alias = item.ident.clone();
+                    let _ignored = acc.0.insert(alias, item.ty.clone());
+                    acc
+                }
+                ImplItem::Const(_)
+                | ImplItem::Macro(_)
+                | ImplItem::Verbatim(_)
+                | ImplItem::__TestExhaustive(_) => acc,
             });
 
         let fns = methods

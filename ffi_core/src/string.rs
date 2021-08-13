@@ -78,9 +78,9 @@ pub struct FFIArrayString {
 /// This is the only way to safely construct an `FFIArrayString` from the non-Rust side of the FFI
 /// boundary. We assume that all instances of `FFIArrayString` are allocated by Rust, as this allows
 /// us to greatly simplify memory management.
-/// 
+///
 /// # Panics
-/// 
+///
 /// This will panic if, for any element in `ptr`, we cannot convert a `CStr` to a `str`.
 ///
 #[must_use]
@@ -248,13 +248,13 @@ macro_rules! ffi_string {
 }
 
 /// Converts an FFI string (a `*const c_char`) to a `Uuid`.
-/// 
+///
 /// # Safety
-/// 
+///
 /// `ptr` is unchecked and will be dereferenced, so it must not be null.
-/// 
+///
 /// # Panics
-/// 
+///
 /// This will panic if we cannot parse the string at `ptr` as a `Uuid`.
 ///
 #[must_use]
@@ -263,11 +263,11 @@ pub unsafe fn uuid_from_c(ptr: *const c_char) -> Uuid {
 }
 
 /// Converts an FFI string (a `*const c_char`) to a `String`.
-/// 
+///
 /// # Safety
-/// 
+///
 /// `ptr` is unchecked and will be dereferenced, so it must not be null.
-/// 
+///
 #[must_use]
 pub unsafe fn string_from_c(ptr: *const c_char) -> String {
     CStr::from_ptr(ptr).to_string_lossy().into_owned()
@@ -280,12 +280,12 @@ pub unsafe fn string_from_c(ptr: *const c_char) -> String {
 /// should be passed to `free_rust_string` so that Rust can safely free it.
 ///
 /// # Safety
-/// 
+///
 /// We assume that the memory behind `string` was allocated by Rust. Don't call this with an object
 /// created on the other side of the FFI boundary; that is undefined behavior.
-/// 
+///
 /// You **must not** access `string` after passing it to this method.
-/// 
+///
 /// It's safe to call this with a null pointer.
 ///
 #[no_mangle]

@@ -3,12 +3,12 @@
 //!
 
 use ffi_internals::consumer::consumer_enum::ConsumerEnum;
-use proc_macro2::TokenStream;
 use ffi_internals::{
+    heck::SnakeCase,
     quote::{format_ident, quote},
     syn::Ident,
-    heck::SnakeCase,
 };
+use proc_macro2::TokenStream;
 
 /// Builds an FFI module for the enum `type_name`.
 ///

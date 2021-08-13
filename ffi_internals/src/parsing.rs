@@ -2,12 +2,12 @@
 //! Parses the data that we're interested in out of `syn::DeriveInput` syntax tree.
 //!
 
+use proc_macro_error::{abort, OptionExt, ResultExt};
 use std::fs::File;
 use std::io::Read;
-use proc_macro_error::{OptionExt, ResultExt};
 use syn::{
-    Attribute, GenericArgument, Ident, Item, Meta, NestedMeta, Path, PathArguments, PathSegment, 
-    spanned::Spanned, Type,
+    spanned::Spanned, Attribute, GenericArgument, Ident, Item, Meta, NestedMeta, Path,
+    PathArguments, PathSegment, Type,
 };
 
 mod field_attributes;
@@ -31,10 +31,10 @@ fn parse_ffi_meta(attr: &Attribute) -> Vec<NestedMeta> {
     match attr.parse_meta() {
         Ok(Meta::List(meta)) => meta.nested.into_iter().collect(),
         Ok(other) => {
-            proc_macro_error::abort!(other.span(), "Unexpected meta attribute.")
+            abort!(other.span(), "Unexpected meta attribute.")
         }
         Err(err) => {
-            proc_macro_error::abort!(attr.span(), "Error parsing meta attribute: {}.", err)
+            abort!(attr.span(), "Error parsing meta attribute: {}.", err)
         }
     }
 }
@@ -62,8 +62,13 @@ pub fn is_repr_c(attrs: &[Attribute]) -> bool {
             if let Meta::List(l) = m {
                 if l.path.segments.first().map(|s| s.ident.to_string()) == Some("repr".to_string())
                 {
-                    if let NestedMeta::Meta(m) = l.nested.first().expect_or_abort("Expected `repr` attribute to have a nested identifier.") {
-                        return m.path().segments.first().map(|s| s.ident.to_string()) == Some("C".to_string());
+                    if let NestedMeta::Meta(m) = l
+                        .nested
+                        .first()
+                        .expect_or_abort("Expected `repr` attribute to have a nested identifier.")
+                    {
+                        return m.path().segments.first().map(|s| s.ident.to_string())
+                            == Some("C".to_string());
                     }
                 }
                 false
@@ -90,9 +95,17 @@ pub fn parse_custom_ffi_type(
     type_name: &str,
     expected_init: &Ident,
 ) -> (Vec<(Ident, Type)>, Vec<(Ident, Type)>) {
-    let mut file = File::open(path).unwrap_or_else(|err| proc_macro_error::abort_call_site!("Unable to open file {:?} with error {}", path, err));
+    let mut file = File::open(path).unwrap_or_else(|err| {
+        proc_macro_error::abort_call_site!("Unable to open file {:?} with error {}", path, err)
+    });
     let mut src = String::new();
-    let _ = file.read_to_string(&mut src).unwrap_or_else(|err| proc_macro_error::abort_call_site!("Unable to read file at path {:?} with error {}", path, err));
+    let _ = file.read_to_string(&mut src).unwrap_or_else(|err| {
+        proc_macro_error::abort_call_site!(
+            "Unable to read file at path {:?} with error {}",
+            path,
+            err
+        )
+    });
 
     let fns: Vec<syn::ItemFn> = syn::parse_file(&src)
         .expect_or_abort("Could not parse file.")
@@ -110,18 +123,28 @@ pub fn parse_custom_ffi_type(
     let initializer = fns
         .iter()
         .find(|f| &f.sig.ident == expected_init)
-        .expect_or_abort(&format!("No function found with identifier {:?} in file {:?}", expected_init, file))
+        .expect_or_abort(&format!(
+            "No function found with identifier {:?} in file {:?}",
+            expected_init, file
+        ))
         .clone();
 
     // Make sure the initializer's signature is right.
     if let syn::ReturnType::Type(_, return_type) = &initializer.sig.output {
-        let expected_return_type = &syn::parse_str::<Type>(&format!("*const {}", type_name)).expect_or_abort("Error parsing expected signature");
+        let expected_return_type = &syn::parse_str::<Type>(&format!("*const {}", type_name))
+            .expect_or_abort("Error parsing expected signature");
         if return_type.as_ref() != expected_return_type {
-            proc_macro_error::abort!(return_type.span(), "Expected return type {:?}", expected_return_type)
+            abort!(
+                return_type.span(),
+                "Expected return type {:?}",
+                expected_return_type
+            )
         }
-        
     } else {
-        proc_macro_error::abort_call_site!("Couldn't find expected type signature on custom initializer in file {:?}.", file)
+        proc_macro_error::abort_call_site!(
+            "Couldn't find expected type signature on custom initializer in file {:?}.",
+            file
+        )
     }
 
     let init_data: Vec<(Ident, Type)> = initializer
@@ -134,7 +157,7 @@ pub fn parse_custom_ffi_type(
                     return (ident.ident.clone(), *arg.ty.clone());
                 }
             }
-            proc_macro_error::abort!(arg.span(), "Unsupported initializer argument: {:?}", arg)
+            abort!(arg.span(), "Unsupported initializer argument: {:?}", arg)
         })
         .collect();
 
@@ -146,12 +169,12 @@ pub fn parse_custom_ffi_type(
             }
             let expected_arg = syn::parse_str::<syn::FnArg>(&format!("ptr: *const {}", type_name)).unwrap_or_abort();
             if f.sig.inputs.len() != 1 || f.sig.inputs.first().expect_or_abort("") != &expected_arg {
-                proc_macro_error::abort!(f.sig.span(), "Non-initializer functions in the custom FFI module must take exactly one `ptr: *const TypeName` argument. Found:\n\n {:?}", f.sig.inputs);
+                abort!(f.sig.span(), "Non-initializer functions in the custom FFI module must take exactly one `ptr: *const TypeName` argument. Found:\n\n {:?}", f.sig.inputs);
             }
             if let syn::ReturnType::Type(_, return_type) = &f.sig.output {
                 return Some((f.sig.ident.clone(), *return_type.clone()));
             }
-            proc_macro_error::abort!(f.span(), "Can't read return type of function: {:?}", f);
+            abort!(f.span(), "Can't read return type of function: {:?}", f);
         })
         .collect();
 
