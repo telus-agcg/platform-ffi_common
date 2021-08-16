@@ -4,9 +4,8 @@
 //!
 
 use crate::{
-    alias_resolution,
-    type_ffi::{Context, TypeIdentifier, TypeFFI},
-    parsing,
+    alias_resolution, parsing,
+    type_ffi::{Context, TypeFFI, TypeIdentifier},
 };
 use heck::SnakeCase;
 use parsing::FieldAttributes;
@@ -16,7 +15,7 @@ use quote::{format_ident, quote};
 use syn::{spanned::Spanned, Field, Ident};
 
 /// Represents the components of a field for generating an FFI.
-/// 
+///
 #[derive(Debug)]
 pub struct FieldFFI {
     /// The type to which this field belongs.

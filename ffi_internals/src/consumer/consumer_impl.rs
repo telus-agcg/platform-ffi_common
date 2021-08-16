@@ -7,7 +7,7 @@ use crate::impl_internals::impl_ffi::ImplFFI;
 impl ImplFFI {
     /// Generates an appropriate consumer file name for this impl (by joining the trait and type
     /// names).
-    /// 
+    ///
     #[must_use]
     pub fn consumer_file_name(&self) -> String {
         format!("{}_{}.swift", self.trait_name, self.type_name)

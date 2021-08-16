@@ -1,7 +1,7 @@
 //!
 //! Contains data structures for describing and implementations for parsing a functions's FFI
 //! attributes.
-//! 
+//!
 
 use proc_macro_error::abort;
 use syn::{spanned::Spanned, Ident, Meta, NestedMeta, Path};

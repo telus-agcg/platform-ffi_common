@@ -222,7 +222,10 @@ pub(super) fn separate_wrapping_type_from_inner_type(
     };
 
     match field_type_path.arguments {
-        PathArguments::None => abort!(field_type_path.span(), "No generic args in an option type...?"),
+        PathArguments::None => abort!(
+            field_type_path.span(),
+            "No generic args in an option type...?"
+        ),
         PathArguments::AngleBracketed(generic) => {
             if let Some(GenericArgument::Type(t)) = generic.args.first() {
                 if let Some(inner_segment) = get_segment_for_field(t) {
@@ -245,7 +248,10 @@ pub(super) fn separate_wrapping_type_from_inner_type(
                 abort!(generic.span(), "No generic args...?")
             }
         }
-        PathArguments::Parenthesized(_) => abort!(field_type_path.span(), "Parenthesized path args are not supported."),
+        PathArguments::Parenthesized(_) => abort!(
+            field_type_path.span(),
+            "Parenthesized path args are not supported."
+        ),
     }
 }
 

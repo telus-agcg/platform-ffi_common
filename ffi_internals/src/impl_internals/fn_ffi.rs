@@ -4,8 +4,8 @@
 //!
 
 use crate::{
-    type_ffi::{Context, TypeIdentifier, TypeFFI},
     parsing::{FieldAttributes, TypeAttributes},
+    type_ffi::{Context, TypeFFI, TypeIdentifier},
 };
 use lazy_static::__Deref;
 use proc_macro2::TokenStream;
@@ -14,17 +14,17 @@ use std::collections::HashMap;
 use syn::{spanned::Spanned, Ident, ImplItemMethod, ItemFn, PatType, Type};
 
 /// Describes the various kinds of receivers we may encounter when parsing a function.
-/// 
+///
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FnReceiver {
     /// No receiver (i.e. the function does not take any kind of `self` argument).
-    /// 
+    ///
     None,
     /// The function takes an owned receiver (i.e. `self`).
-    /// 
+    ///
     Owned,
     /// The function takes a borrowed receiver (i.e. `&self`).
-    /// 
+    ///
     Borrowed,
 }
 
@@ -33,7 +33,7 @@ pub enum FnReceiver {
 #[derive(Debug)]
 pub struct FnFFI {
     /// The name of this function.
-    /// 
+    ///
     pub fn_name: Ident,
 
     /// True if this fn takes a receiver like `self`, `&self`, etc, otherwise false.
@@ -52,21 +52,21 @@ pub struct FnFFI {
 }
 
 /// Representes the inputs for building a `FnFFI`.
-/// 
+///
 pub struct FnFFIInputs<'a> {
     /// The impl's parsed data structure.
-    /// 
+    ///
     pub method: &'a ImplItemMethod,
     /// Any types referenced in the impl that should be passed through the FFI without wrapping,
     /// such as numerics or `repr(C)` enums/structs.
     ///
     pub raw_types: Vec<Ident>,
     /// The type of `Self` in this impl.
-    /// 
+    ///
     pub self_type: Ident,
     /// A map of local aliases, where the key is the newtype's identifier and the value is the
     /// underlying type.
-    /// 
+    ///
     pub local_aliases: HashMap<Ident, Type>,
 }
 
@@ -274,7 +274,9 @@ impl FnFFI {
             let assignment = quote!(let return_value = #native_call(#calling_args););
             let return_conversion = if r.is_result {
                 match &r.native_type {
-                    TypeIdentifier::Boxed(_) | TypeIdentifier::String | TypeIdentifier::DateTime
+                    TypeIdentifier::Boxed(_)
+                    | TypeIdentifier::String
+                    | TypeIdentifier::DateTime
                         if !r.is_vec =>
                     {
                         let conversion = r.rust_to_ffi_value(
@@ -369,8 +371,11 @@ impl From<(&PatType, Vec<Ident>, Option<Ident>)> for FnParameterFFI {
                 "Anonymous parameter (not allowed in Rust 2018): {:?}"
             );
         };
-        let native_type_data =
-        TypeFFI::from(TypeAttributes::initial(*arg.ty.clone(), raw_types, self_type));
+        let native_type_data = TypeFFI::from(TypeAttributes::initial(
+            *arg.ty.clone(),
+            raw_types,
+            self_type,
+        ));
         Self {
             name,
             native_type_data,

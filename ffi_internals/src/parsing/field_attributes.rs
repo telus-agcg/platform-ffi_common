@@ -1,7 +1,7 @@
 //!
 //! Contains data structures for describing and implementations for parsing a field's FFI
 //! attributes.
-//! 
+//!
 
 use proc_macro_error::emit_error;
 use syn::{spanned::Spanned, Attribute, Ident, Lit, Meta, NestedMeta, Path};

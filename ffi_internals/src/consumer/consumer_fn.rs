@@ -59,7 +59,7 @@ impl FnFFI {
     /// type with the behaviors described by `self`. This is primarily for use with
     /// `ffi_derive::expose_fn`, where we want to generate an FFI and consumer for a standalone
     /// function.
-    /// 
+    ///
     #[must_use]
     pub fn generate_consumer_extension(
         &self,

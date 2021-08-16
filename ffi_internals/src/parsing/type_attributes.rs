@@ -4,7 +4,7 @@
 //! parses the low level types (represented by the `syn::Type` enum) into an
 //! `ffi_internals::type_ffi::TypeFFI` so that the rest of `ffi_internals` has something relatively
 //! straightforward to work with.
-//! 
+//!
 
 use proc_macro_error::{abort, OptionExt};
 use quote::format_ident;

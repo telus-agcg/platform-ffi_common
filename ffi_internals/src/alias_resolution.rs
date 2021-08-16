@@ -27,7 +27,10 @@ use std::{
     collections::HashMap,
     sync::{Mutex, MutexGuard},
 };
-use syn::{Attribute, Ident, Item, ItemMod, ItemType, Lit, Meta::NameValue, spanned::Spanned, Type, TypePath};
+use syn::{
+    spanned::Spanned, Attribute, Ident, Item, ItemMod, ItemType, Lit, Meta::NameValue, Type,
+    TypePath,
+};
 
 lazy_static! {
     /// The path to the alias map file, behind a `Mutex` to ensure that multiple operations don't
@@ -40,7 +43,7 @@ lazy_static! {
 }
 
 /// Describes errors that can occurs during alias resolution.
-/// 
+///
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// An unsupported `ItemType` was encountered.
@@ -49,7 +52,7 @@ pub enum Error {
     /// No path segments were found in a `TypePath`.
     #[error("No path segments in TypePath: `{0:?}`")]
     MissingPath(TypePath),
-    /// An error occurred when (de)serializing with `serde_json`. 
+    /// An error occurred when (de)serializing with `serde_json`.
     #[error("serde_json error: `{0}`")]
     Serde(serde_json::Error),
     /// An error occurred when reading from or writing to the disk.
@@ -283,7 +286,11 @@ fn parse_nested_alias_meta(attr: &Attribute) -> Option<String> {
             if let Lit::Str(s) = name_value.lit {
                 return Some(s.value());
             }
-            abort!(name_value.span(), "Unexpected nested_alias value: {:?}", name_value)
+            abort!(
+                name_value.span(),
+                "Unexpected nested_alias value: {:?}",
+                name_value
+            )
         }
         Ok(other) => {
             abort!(attr.span(), "Unexpected meta attribute found: {:?}", other)

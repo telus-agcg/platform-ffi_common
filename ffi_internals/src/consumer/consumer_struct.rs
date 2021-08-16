@@ -6,10 +6,10 @@
 
 use crate::{
     heck::MixedCase,
-    type_ffi::TypeFFI,
     parsing::CustomAttributes,
     struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
     syn::{Ident, Path, Type},
+    type_ffi::TypeFFI,
 };
 
 /// Contains the data required to generate a consumer type, and associated functions for doing so.
@@ -231,33 +231,33 @@ extension {}: NativeArrayData {{
 }
 
 /// Representes the inputs for building a customm consumer struct.
-/// 
+///
 pub struct CustomConsumerStructInputs<'a> {
     /// The name of the struct we're working with.
-    /// 
+    ///
     pub type_name: String,
     /// Any required imports that the consumer will need.
-    /// 
+    ///
     pub required_imports: &'a [Path],
     /// Custom attributes set on the struct.
-    /// 
+    ///
     pub custom_attributes: &'a CustomAttributes,
     /// The name of the initializer function in this struct.
-    /// 
+    ///
     pub init_fn_name: String,
-    /// The arguments that this struct's initializer function takes (each represented by a tuple of 
+    /// The arguments that this struct's initializer function takes (each represented by a tuple of
     /// their identifier and type).
-    /// 
+    ///
     pub init_args: &'a [(Ident, Type)],
-    /// The getter functions provided by this struct (each represented by a tuple of their 
+    /// The getter functions provided by this struct (each represented by a tuple of their
     /// identifier and type).
-    /// 
+    ///
     pub getters: &'a [(Ident, Type)],
     /// The name of the free function in this struct.
-    /// 
+    ///
     pub free_fn_name: String,
     /// The name of the clone function in this struct.
-    /// 
+    ///
     pub clone_fn_name: String,
 }
 
@@ -279,9 +279,7 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
                 // This looks like `foo: Bar,`.
                 acc.0.push_str(&format!(
                     "        {}: {}{}",
-                    arg_ident_string,
-                    consumer_type,
-                    trailing_punctuation
+                    arg_ident_string, consumer_type, trailing_punctuation
                 ));
                 // It's worth noting here that we always clone when calling an initializer -- the
                 // new Rust instance needs to take ownership of the data because it will be owned by
@@ -290,8 +288,7 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
                 // This looks like `foo.clone(),`.
                 acc.1.push_str(&format!(
                     "            {}.clone(){}",
-                    arg_ident_string,
-                    trailing_punctuation
+                    arg_ident_string, trailing_punctuation
                 ));
                 acc
             },

@@ -1,7 +1,7 @@
 //!
 //! Contains data structures for describing and implementations for parsing a struct's FFI
 //! attributes.
-//! 
+//!
 
 use syn::{spanned::Spanned, Attribute, Lit, Meta, NestedMeta, Path};
 
@@ -9,31 +9,31 @@ use syn::{spanned::Spanned, Attribute, Lit, Meta, NestedMeta, Path};
 ///
 pub struct StructAttributes {
     /// Alias modules that are referenced by the types of this struct's fields.
-    /// 
+    ///
     pub alias_modules: Vec<String>,
     /// Custom attributes specified when parsing a struct that has a custom (i.e. manually defined)
     /// FFI. This is `None` whenever we're dealing with a normal struct that can be derived through
     /// `struct_ffi::standard`.
-    /// 
+    ///
     pub custom_attributes: Option<CustomAttributes>,
     /// Any imports that need to be included in the generated FFI module.
-    /// 
+    ///
     pub required_imports: Vec<Path>,
 }
 
 /// Helper attributes that describe special behavior for structs with a custom FFI.
-/// 
+///
 #[derive(Debug, Clone, Default)]
 pub struct CustomAttributes {
     /// A collection of paths to functions that can fail (i.e., return a `Result` internally).
-    /// 
+    ///
     pub failable_fns: Vec<Path>,
     /// True if the initializer in this custom FFI can fail, otherwise false.
-    /// 
+    ///
     pub failable_init: bool,
     /// The path (relative to the crate's root) to the file containing the custom FFI implementation
     /// for the struct.
-    /// 
+    ///
     pub path: String,
 }
 

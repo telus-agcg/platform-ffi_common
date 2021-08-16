@@ -137,7 +137,7 @@ impl From<(TypeIdentifier, WrappingType)> for TypeFFI {
 impl TypeFFI {
     /// Generates a `TokenStream` for turning an argument of the FFI type represented by `self` into
     /// a native Rust type.
-    /// 
+    ///
     #[must_use]
     pub fn argument_into_rust(
         &self,
@@ -253,7 +253,7 @@ impl TypeFFI {
 
     /// Generates a `TokenStream` for turning an argument of the Rust type represented by `self` into
     /// an FFI type.
-    /// 
+    ///
     #[must_use]
     pub fn rust_to_ffi_value(
         &self,
@@ -417,14 +417,19 @@ impl TypeFFI {
     ///
     #[must_use]
     pub fn consumer_type(&self, expose_as: Option<&Ident>) -> String {
-        let mut t = expose_as.map_or_else({||
-            match &self.native_type {
-                TypeIdentifier::Boxed(inner) => inner.to_string(),
-                TypeIdentifier::Raw(inner) => crate::consumer_type_for(&inner.to_string(), false),
-                TypeIdentifier::DateTime => "Date".to_string(),
-                TypeIdentifier::String | TypeIdentifier::Uuid => "String".to_string(),
-            }
-        }, std::string::ToString::to_string);
+        let mut t = expose_as.map_or_else(
+            {
+                || match &self.native_type {
+                    TypeIdentifier::Boxed(inner) => inner.to_string(),
+                    TypeIdentifier::Raw(inner) => {
+                        crate::consumer_type_for(&inner.to_string(), false)
+                    }
+                    TypeIdentifier::DateTime => "Date".to_string(),
+                    TypeIdentifier::String | TypeIdentifier::Uuid => "String".to_string(),
+                }
+            },
+            std::string::ToString::to_string,
+        );
 
         if self.is_vec {
             t = format!("[{}]", t)

@@ -128,10 +128,10 @@
 //! boilerplate stuff + get a consumer generated for itself, but provide its own implementation of
 //! an initializer and getter functions. The `custom` helper attribute lets us point to to a file
 //! that describes the base interface for the type, as in `ffi(custom = "src/unit/custom_ffi.rs")`.
-//! 
+//!
 //! If the custom initializer takes a pointer type (like a `* const c_char` for an FFI string), we
-//! can't automatically detect whether the parameter is required. If you want to specify which 
-//! parameters are required, you can do so by prefixing parameter names with `required_` (as in 
+//! can't automatically detect whether the parameter is required. If you want to specify which
+//! parameters are required, you can do so by prefixing parameter names with `required_` (as in
 //! `required_param1`), and we will enforce that in the generated consumer types.
 //!
 //! See `../../ffi_common/tests/custom_ffi` for an example.
