@@ -4,8 +4,8 @@
 //!
 
 use crate::{
-    native_type_data::{Context, NativeType, NativeTypeData, Unparsed},
-    parsing::FieldAttributes,
+    type_ffi::{Context, TypeIdentifier, TypeFFI},
+    parsing::{FieldAttributes, TypeAttributes},
 };
 use lazy_static::__Deref;
 use proc_macro2::TokenStream;
@@ -14,10 +14,17 @@ use std::collections::HashMap;
 use syn::{spanned::Spanned, Ident, ImplItemMethod, ItemFn, PatType, Type};
 
 /// Describes the various kinds of receivers we may encounter when parsing a function.
+/// 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FnReceiver {
+    /// No receiver (i.e. the function does not take any kind of `self` argument).
+    /// 
     None,
+    /// The function takes an owned receiver (i.e. `self`).
+    /// 
     Owned,
+    /// The function takes a borrowed receiver (i.e. `&self`).
+    /// 
     Borrowed,
 }
 
@@ -26,6 +33,7 @@ pub enum FnReceiver {
 #[derive(Debug)]
 pub struct FnFFI {
     /// The name of this function.
+    /// 
     pub fn_name: Ident,
 
     /// True if this fn takes a receiver like `self`, `&self`, etc, otherwise false.
@@ -40,13 +48,25 @@ pub struct FnFFI {
     pub(crate) parameters: Vec<FnParameterFFI>,
 
     /// The return type for this function, if any.
-    pub return_type: Option<NativeTypeData>,
+    pub return_type: Option<TypeFFI>,
 }
 
+/// Representes the inputs for building a `FnFFI`.
+/// 
 pub struct FnFFIInputs<'a> {
+    /// The impl's parsed data structure.
+    /// 
     pub method: &'a ImplItemMethod,
+    /// Any types referenced in the impl that should be passed through the FFI without wrapping,
+    /// such as numerics or `repr(C)` enums/structs.
+    ///
     pub raw_types: Vec<Ident>,
+    /// The type of `Self` in this impl.
+    /// 
     pub self_type: Ident,
+    /// A map of local aliases, where the key is the newtype's identifier and the value is the
+    /// underlying type.
+    /// 
     pub local_aliases: HashMap<Ident, Type>,
 }
 
@@ -86,11 +106,11 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
             },
         );
 
-        let return_type: Option<NativeTypeData> = match &inputs.method.sig.output {
+        let return_type: Option<TypeFFI> = match &inputs.method.sig.output {
             syn::ReturnType::Default => None,
             syn::ReturnType::Type(_token, ty) => {
                 let dealiased = inputs.strip_local_alias(&*ty);
-                Some(NativeTypeData::from(Unparsed::initial(
+                Some(TypeFFI::from(TypeAttributes::initial(
                     dealiased,
                     inputs.raw_types,
                     Some(inputs.self_type),
@@ -133,9 +153,9 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
             },
         );
 
-        let return_type: Option<NativeTypeData> = match &method.sig.output {
+        let return_type: Option<TypeFFI> = match &method.sig.output {
             syn::ReturnType::Default => None,
-            syn::ReturnType::Type(_token, ty) => Some(NativeTypeData::from(Unparsed::initial(
+            syn::ReturnType::Type(_token, ty) => Some(TypeFFI::from(TypeAttributes::initial(
                 *ty.clone(),
                 raw_types,
                 None,
@@ -180,6 +200,7 @@ impl FnFFI {
     /// ```
     ///
     #[must_use]
+    #[allow(clippy::too_many_lines)]
     pub fn generate_ffi(
         &self,
         module_name: &Ident,
@@ -220,7 +241,7 @@ impl FnFFI {
                 let native_type = arg.native_type_data.native_type();
                 let conversion = arg.native_type_data.argument_into_rust(&name, false);
                 let conversion = if arg.native_type_data.is_borrow
-                    && arg.native_type_data.native_type == NativeType::String
+                    && arg.native_type_data.native_type == TypeIdentifier::String
                 {
                     quote!(&*#conversion)
                 } else {
@@ -253,7 +274,7 @@ impl FnFFI {
             let assignment = quote!(let return_value = #native_call(#calling_args););
             let return_conversion = if r.is_result {
                 match &r.native_type {
-                    NativeType::Boxed(_) | NativeType::String | NativeType::DateTime
+                    TypeIdentifier::Boxed(_) | TypeIdentifier::String | TypeIdentifier::DateTime
                         if !r.is_vec =>
                     {
                         let conversion = r.rust_to_ffi_value(
@@ -269,7 +290,7 @@ impl FnFFI {
                         map
                     }
                     _ => {
-                        let native_type = r.owned_native_type();
+                        let native_type = r.native_type();
                         let conversion = r.rust_to_ffi_value(
                             &quote!(r),
                             &FieldAttributes {
@@ -330,7 +351,7 @@ pub(crate) struct FnParameterFFI {
 
     /// The type information for generating an FFI for this parameter.
     ///
-    pub(crate) native_type_data: NativeTypeData,
+    pub(crate) native_type_data: TypeFFI,
 
     /// The original type of the fn parameter.
     ///
@@ -349,7 +370,7 @@ impl From<(&PatType, Vec<Ident>, Option<Ident>)> for FnParameterFFI {
             );
         };
         let native_type_data =
-            NativeTypeData::from(Unparsed::initial(*arg.ty.clone(), raw_types, self_type));
+        TypeFFI::from(TypeAttributes::initial(*arg.ty.clone(), raw_types, self_type));
         Self {
             name,
             native_type_data,

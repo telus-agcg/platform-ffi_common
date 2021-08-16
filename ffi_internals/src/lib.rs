@@ -1,21 +1,19 @@
 //!
 //! # `ffi_internals`
 //!
-//! Contains all the parsing and common data structures used by `ffi_derive` and `ffi_consumer`, so
-//! they can be shared between the codegen crates without needing to expose them in `ffi_common`,
-//! which has more general FFI stuff.
+//! Contains all the parsing logic and data structures used by `ffi_derive`, as well as the
+//! `consumer` module for generating consumer code.
 //!
 
 #![deny(unused_extern_crates)]
 #![warn(
-    box_pointers,
     clippy::all,
     clippy::correctness,
     clippy::nursery,
     clippy::pedantic,
     future_incompatible,
     missing_copy_implementations,
-    // missing_docs,
+    missing_docs,
     nonstandard_style,
     rust_2018_idioms,
     trivial_casts,
@@ -24,14 +22,13 @@
     unused_results,
     variant_size_differences
 )]
-#![allow(box_pointers)]
 
 pub mod alias_resolution;
 pub mod consumer;
 pub mod impl_internals;
-pub mod native_type_data;
 pub mod parsing;
 pub mod struct_internals;
+pub mod type_ffi;
 
 // Reexports
 pub use heck;

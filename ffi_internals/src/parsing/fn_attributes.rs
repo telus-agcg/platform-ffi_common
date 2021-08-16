@@ -1,8 +1,17 @@
+//!
+//! Contains data structures for describing and implementations for parsing a functions's FFI
+//! attributes.
+//! 
+
 use proc_macro_error::abort;
 use syn::{spanned::Spanned, Ident, Meta, NestedMeta, Path};
 
+/// Function-level FFI helper attributes.
+///
 pub struct FnAttributes {
+    /// The type to be extended with an implementation for this function in the consumer.
     pub extend_type: Ident,
+    /// Any types in this function that should be treated as raw types.
     pub raw_types: Vec<Ident>,
 }
 
@@ -31,12 +40,6 @@ impl From<syn::AttributeArgs> for FnAttributes {
                             Some(path) => path.get_ident().cloned(),
                             None => abort!(m.span(), "Paths is empty?"),
                         };
-                    // }
-                    //  else if m.path().is_ident("consumer_imports") {
-                    //     if !consumer_imports.is_empty() {
-                    //         panic!("Duplicate `consumer_imports` attributes defined for a single macro call")
-                    //     }
-                    //     consumer_imports = paths
                     } else if m.path().is_ident("raw_types") {
                         if !raw_types.is_empty() {
                             abort!(m.span(), "Duplicate `raw_types` attribute defined for a single call. This attribute must be set once at most.")

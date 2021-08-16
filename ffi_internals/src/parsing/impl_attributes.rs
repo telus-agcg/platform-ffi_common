@@ -1,9 +1,19 @@
+//!
+//! Contains data structures for describing and implementations for parsing an impl's FFI
+//! attributes.
+//! 
+
 use proc_macro_error::abort;
 use syn::{spanned::Spanned, Ident, Meta, NestedMeta, Path};
 
+/// Impl-level FFI helper attributes.
+///
 pub struct ImplAttributes {
+    /// Any imports that need to be included in the generated FFI module.
     pub ffi_imports: Vec<Path>,
+    /// Any imports the consumer will need in order to support the implementation.
     pub consumer_imports: Vec<Path>,
+    /// Any types in this function that should be treated as raw types.
     pub raw_types: Vec<Ident>,
 }
 

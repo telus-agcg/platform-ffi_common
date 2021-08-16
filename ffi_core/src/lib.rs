@@ -5,7 +5,6 @@
 
 #![deny(unused_extern_crates, missing_docs)]
 #![warn(
-    box_pointers,
     clippy::all,
     clippy::correctness,
     clippy::nursery,
@@ -20,7 +19,6 @@
     unused_results,
     variant_size_differences
 )]
-#![allow(box_pointers)]
 
 pub use paste::paste;
 

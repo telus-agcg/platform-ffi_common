@@ -94,8 +94,7 @@ fn test_struct_ffi() {
             Vec::from(get_test_struct_i32_collection(test_struct))
         );
         assert_eq!(variant, get_test_struct_enum_variant(test_struct));
-        // TODO: Fix
-        // assert_eq!(double, get_test_struct_f64_thing(test_struct));
+        approx::assert_relative_eq!(double, get_test_struct_f64_thing(test_struct));
         assert_eq!(
             input_string_vec,
             Vec::<String>::from(get_test_struct_collection_of_strings(test_struct))

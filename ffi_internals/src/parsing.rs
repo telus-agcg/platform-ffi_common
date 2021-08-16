@@ -14,11 +14,13 @@ mod field_attributes;
 mod fn_attributes;
 mod impl_attributes;
 mod struct_attributes;
+mod type_attributes;
 
 pub use field_attributes::FieldAttributes;
 pub use fn_attributes::FnAttributes;
 pub use impl_attributes::ImplAttributes;
 pub use struct_attributes::{CustomAttributes, StructAttributes};
+pub use type_attributes::TypeAttributes;
 
 /// If the path of the `Attribute` parameter is `"ffi"`, this will return a Vec of the attribute's
 /// `NestedMeta` data. If other types of data are found in an `"ffi"` attribute, this will panic.
@@ -220,7 +222,7 @@ pub(super) fn separate_wrapping_type_from_inner_type(
     };
 
     match field_type_path.arguments {
-        PathArguments::None => panic!("No generic args in an option type...?"),
+        PathArguments::None => abort!(field_type_path.span(), "No generic args in an option type...?"),
         PathArguments::AngleBracketed(generic) => {
             if let Some(GenericArgument::Type(t)) = generic.args.first() {
                 if let Some(inner_segment) = get_segment_for_field(t) {
@@ -237,13 +239,13 @@ pub(super) fn separate_wrapping_type_from_inner_type(
                         (inner_segment.ident, wrapping_type)
                     }
                 } else {
-                    panic!("Unsupported path type in generic position")
+                    abort!(t.span(), "Unsupported path type in generic position")
                 }
             } else {
-                panic!("No generic args...?")
+                abort!(generic.span(), "No generic args...?")
             }
         }
-        PathArguments::Parenthesized(_) => panic!("Parenthesized path args are not supported."),
+        PathArguments::Parenthesized(_) => abort!(field_type_path.span(), "Parenthesized path args are not supported."),
     }
 }
 

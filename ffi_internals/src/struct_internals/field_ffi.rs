@@ -5,7 +5,7 @@
 
 use crate::{
     alias_resolution,
-    native_type_data::{Context, NativeType, NativeTypeData},
+    type_ffi::{Context, TypeIdentifier, TypeFFI},
     parsing,
 };
 use heck::SnakeCase;
@@ -15,7 +15,8 @@ use proc_macro_error::abort;
 use quote::{format_ident, quote};
 use syn::{spanned::Spanned, Field, Ident};
 
-/// Represents the components of the generated FFI for a field.
+/// Represents the components of a field for generating an FFI.
+/// 
 #[derive(Debug)]
 pub struct FieldFFI {
     /// The type to which this field belongs.
@@ -28,7 +29,7 @@ pub struct FieldFFI {
 
     /// The type information for generating an FFI for this field.
     ///
-    pub native_type_data: NativeTypeData,
+    pub native_type_data: TypeFFI,
 
     /// The FFI helper attribute annotations on this field.
     ///
@@ -140,12 +141,12 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
 
         // If this has a raw attribute, bypass the normal `NativeType` logic and use `NativeType::raw`.
         let field_type = if attributes.raw {
-            NativeType::Raw(unaliased_field_type)
+            TypeIdentifier::Raw(unaliased_field_type)
         } else {
-            NativeType::from(unaliased_field_type)
+            TypeIdentifier::from(unaliased_field_type)
         };
 
-        let native_type_data = NativeTypeData::from((field_type, wrapping_type));
+        let native_type_data = TypeFFI::from((field_type, wrapping_type));
 
         Self {
             type_name,

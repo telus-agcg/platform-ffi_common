@@ -15,8 +15,6 @@ pub enum Error {
     /// variant is the name of the file that could not be converted to a `String`.
     ///
     Os(std::ffi::OsString),
-    MissingPathSegment,
-    BadStringSegment,
 }
 
 impl From<std::io::Error> for Error {

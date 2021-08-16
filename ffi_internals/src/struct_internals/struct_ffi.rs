@@ -10,27 +10,53 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use syn::{spanned::Spanned, Fields, Ident, Path};
 
+/// Represents the components a struct for generating an FFI.
+/// 
 pub struct StructFFI {
+    /// The identifier for the FFI module to be generated.
+    /// 
     module: Ident,
+    /// The name of the struct.
+    /// 
     pub name: Ident,
+    /// Any imports that need to be included in the generated FFI module.
+    ///
     pub required_imports: Vec<Path>,
+    /// The generated FFI for each of this struct's fields.
+    /// 
     pub fields: Vec<FieldFFI>,
+    /// The initializer arguments, as a `TokenStream` that we can just inject into the right place
+    /// in the generated module's initializer.
+    /// 
     init_arguments: TokenStream,
+    /// The assignment expressions to convert the initializer arguments into native types, as a
+    /// `TokenStream` that we can just inject into the right place in the generated module's
+    /// initializer.
+    /// 
     assignment_expressions: TokenStream,
+    /// The getter functions to include in this module, pre-generated and provided here as a
+    /// `TokenStream`.
+    /// 
     getter_fns: TokenStream,
 }
 
 impl StructFFI {
+    /// The name of the initializer function for this struct.
+    /// 
     #[must_use]
     pub fn init_fn_name(&self) -> Ident {
         format_ident!("{}_init", self.name.to_string().to_snake_case())
     }
 
+    /// The name of the free function for this struct.
+    /// 
     #[must_use]
     pub fn free_fn_name(&self) -> Ident {
         format_ident!("{}_free", self.name.to_string().to_snake_case())
     }
 
+    /// The name of the clone function for this struct.
+    /// 
     #[must_use]
     pub fn clone_fn_name(&self) -> Ident {
         format_ident!("clone_{}", self.name.to_string().to_snake_case())
@@ -53,11 +79,23 @@ impl StructFFI {
     }
 }
 
+/// Representes the inputs for building a `StructFFI`.
+/// 
 pub struct StructInputs<'a> {
+    /// The identifier for the FFI module to be generated.
+    /// 
     pub module_name: &'a Ident,
+    /// The name of the struct.
+    /// 
     pub type_name: Ident,
+    /// The struct's parsed data structure.
+    /// 
     pub data: &'a syn::DataStruct,
+    /// Alias modules that are referenced by the types of this struct's fields.
+    /// 
     pub alias_modules: &'a [String],
+    /// Any imports that need to be included in the generated FFI module.
+    /// 
     pub required_imports: &'a [Path],
 }
 

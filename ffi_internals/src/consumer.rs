@@ -141,12 +141,4 @@ fn build_imports(paths: &[syn::Path]) -> Vec<String> {
             format!("import class {}.{}", crate_name, type_name)
         })
         .collect()
-    // paths
-    //     .iter()
-    //     .try_fold(vec![], |mut acc, path| {
-    //         let crate_name = get_segment_ident(path.segments.first())?.to_string().to_camel_case();
-    //         let type_name = get_segment_ident(path.segments.last())?.to_string().to_camel_case();
-    //         acc.push(format!("import class {}.{}", crate_name, type_name));
-    //         Ok(acc)
-    //     })
 }

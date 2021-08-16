@@ -6,7 +6,7 @@
 
 use crate::{
     heck::MixedCase,
-    native_type_data::NativeTypeData,
+    type_ffi::TypeFFI,
     parsing::CustomAttributes,
     struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
     syn::{Ident, Path, Type},
@@ -230,14 +230,34 @@ extension {}: NativeArrayData {{
     }
 }
 
+/// Representes the inputs for building a customm consumer struct.
+/// 
 pub struct CustomConsumerStructInputs<'a> {
+    /// The name of the struct we're working with.
+    /// 
     pub type_name: String,
+    /// Any required imports that the consumer will need.
+    /// 
     pub required_imports: &'a [Path],
+    /// Custom attributes set on the struct.
+    /// 
     pub custom_attributes: &'a CustomAttributes,
+    /// The name of the initializer function in this struct.
+    /// 
     pub init_fn_name: String,
+    /// The arguments that this struct's initializer function takes (each represented by a tuple of 
+    /// their identifier and type).
+    /// 
     pub init_args: &'a [(Ident, Type)],
+    /// The getter functions provided by this struct (each represented by a tuple of their 
+    /// identifier and type).
+    /// 
     pub getters: &'a [(Ident, Type)],
+    /// The name of the free function in this struct.
+    /// 
     pub free_fn_name: String,
+    /// The name of the clone function in this struct.
+    /// 
     pub clone_fn_name: String,
 }
 
@@ -248,15 +268,18 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
         let arg_count = inputs.init_args.len();
         let (consumer_init_args, ffi_init_args) = inputs.init_args.iter().enumerate().fold(
             (String::new(), String::new()),
-            |mut acc, (index, (i, t))| {
+            |mut acc, (index, (arg_ident, arg_type))| {
                 // Swift rejects trailing commas on argument lists.
                 let trailing_punctuation = if index < arg_count - 1 { ",\n" } else { "" };
+                let arg_ident_string = arg_ident.to_string();
+                let (required, arg_ident_string) = arg_ident_string
+                    .strip_prefix("required_")
+                    .map_or((false, &*arg_ident_string), |stripped| (true, stripped));
+                let consumer_type = TypeFFI::from((arg_type, required)).consumer_type(None);
                 // This looks like `foo: Bar,`.
-                // TODO: This is where we get the expression: String? for the Unit init. Wrong.
-                let consumer_type = NativeTypeData::from(t).consumer_type(None);
                 acc.0.push_str(&format!(
                     "        {}: {}{}",
-                    i.to_string(),
+                    arg_ident_string,
                     consumer_type,
                     trailing_punctuation
                 ));
@@ -267,7 +290,7 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
                 // This looks like `foo.clone(),`.
                 acc.1.push_str(&format!(
                     "            {}.clone(){}",
-                    i.to_string(),
+                    arg_ident_string,
                     trailing_punctuation
                 ));
                 acc
@@ -295,7 +318,7 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
                     } else {
                         "public"
                     };
-                    let consumer_type = NativeTypeData::from(getter_type).consumer_type(None);
+                    let consumer_type = TypeFFI::from((getter_type, false)).consumer_type(None);
 
                     let consumer_getter_name = match getter_ident
                         .to_string()

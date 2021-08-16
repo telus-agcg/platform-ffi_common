@@ -141,6 +141,9 @@ impl ImplFFI {
         )
     }
 
+    /// Generates a module containing functions for calling the functions in the `impl` represented
+    /// by `self` from outside of Rust.
+    /// 
     #[must_use]
     pub fn generate_ffi(&self) -> TokenStream {
         let mod_name = self.module_name();

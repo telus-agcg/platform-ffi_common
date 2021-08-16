@@ -21,12 +21,13 @@
 //!
 
 use lazy_static::lazy_static;
+use proc_macro_error::abort;
 use quote::format_ident;
 use std::{
     collections::HashMap,
     sync::{Mutex, MutexGuard},
 };
-use syn::{Attribute, Ident, Item, ItemMod, ItemType, Lit, Meta::NameValue, Type, TypePath};
+use syn::{Attribute, Ident, Item, ItemMod, ItemType, Lit, Meta::NameValue, spanned::Spanned, Type, TypePath};
 
 lazy_static! {
     /// The path to the alias map file, behind a `Mutex` to ensure that multiple operations don't
@@ -38,18 +39,26 @@ lazy_static! {
     static ref ALIAS_MAP_PATH: Mutex<String> = Mutex::new(format!("{}/alias_map.json", env!("OUT_DIR")));
 }
 
+/// Describes errors that can occurs during alias resolution.
+/// 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    /// An unsupported `ItemType` was encountered.
     #[error("Unsupported ItemType: `{0:?}`")]
     UnexpectedType(Item),
+    /// No path segments were found in a `TypePath`.
     #[error("No path segments in TypePath: `{0:?}`")]
     MissingPath(TypePath),
+    /// An error occurred when (de)serializing with `serde_json`. 
     #[error("serde_json error: `{0}`")]
     Serde(serde_json::Error),
+    /// An error occurred when reading from or writing to the disk.
     #[error("IO error: `{0}`")]
     Io(std::io::Error),
+    /// The attribute macro was invoked on an empty module.
     #[error("No module content found for ItemMod: `{0:?}`")]
     EmptyModule(ItemMod),
+    /// A mutex error occurred.
     #[error("Mutex error: `{0}`")]
     Mutex(String),
 }
@@ -274,13 +283,13 @@ fn parse_nested_alias_meta(attr: &Attribute) -> Option<String> {
             if let Lit::Str(s) = name_value.lit {
                 return Some(s.value());
             }
-            panic!("Unexpected nested_alias value: {:?}", name_value);
+            abort!(name_value.span(), "Unexpected nested_alias value: {:?}", name_value)
         }
         Ok(other) => {
-            panic!("Unexpected meta attribute found: {:?}", other);
+            abort!(attr.span(), "Unexpected meta attribute found: {:?}", other)
         }
         Err(err) => {
-            panic!("Error parsing meta attribute: {:?}", err);
+            abort!(attr.span(), "Error parsing meta attribute: {:?}", err)
         }
     }
 }

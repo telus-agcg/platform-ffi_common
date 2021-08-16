@@ -1,8 +1,7 @@
 //! # `ffi_common`
 //!
-//! Crate for common Rust FFI behaviors, including error, string, and primitive handling in
-//! `ffi_internals`, generating an ffi with `ffi_derive`, and generating consumer types around that
-//! FFI with `ffi_consumer`.
+//! Crate for common Rust FFI behaviors, including error, string, and primitive handling in `core`,
+//! generating an ffi with `derive`, and generating consumer types around that FFI with `consumer`.
 //!
 
 #![warn(

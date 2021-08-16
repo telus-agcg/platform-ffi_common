@@ -1,3 +1,7 @@
+//!
+//! Generates a wrapping function in the consumer's language.
+//!
+
 use crate::{
     heck::MixedCase,
     impl_internals::fn_ffi::{FnFFI, FnReceiver},
@@ -51,6 +55,11 @@ impl FnFFI {
         )
     }
 
+    /// Generates the contents of a consumer extension for this function, extending the original
+    /// type with the behaviors described by `self`. This is primarily for use with
+    /// `ffi_derive::expose_fn`, where we want to generate an FFI and consumer for a standalone
+    /// function.
+    /// 
     #[must_use]
     pub fn generate_consumer_extension(
         &self,
