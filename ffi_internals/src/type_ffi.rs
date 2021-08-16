@@ -417,15 +417,14 @@ impl TypeFFI {
     ///
     #[must_use]
     pub fn consumer_type(&self, expose_as: Option<&Ident>) -> String {
-        if let Some(expose_as) = expose_as {
-            return expose_as.to_string();
-        }
-        let mut t = match &self.native_type {
-            TypeIdentifier::Boxed(inner) => inner.to_string(),
-            TypeIdentifier::Raw(inner) => crate::consumer_type_for(&inner.to_string(), false),
-            TypeIdentifier::DateTime => "Date".to_string(),
-            TypeIdentifier::String | TypeIdentifier::Uuid => "String".to_string(),
-        };
+        let mut t = expose_as.map_or_else({||
+            match &self.native_type {
+                TypeIdentifier::Boxed(inner) => inner.to_string(),
+                TypeIdentifier::Raw(inner) => crate::consumer_type_for(&inner.to_string(), false),
+                TypeIdentifier::DateTime => "Date".to_string(),
+                TypeIdentifier::String | TypeIdentifier::Uuid => "String".to_string(),
+            }
+        }, std::string::ToString::to_string);
 
         if self.is_vec {
             t = format!("[{}]", t)
