@@ -96,11 +96,11 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
                             FnReceiver::Owned
                         }
                     }
-                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from((
+                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from( FnParameterFFIInputs{
                         arg,
-                        inputs.raw_types.clone(),
-                        Some(inputs.self_type.clone()),
-                    ))),
+                        raw_types: inputs.raw_types.clone(),
+                        self_type: Some(inputs.self_type.clone()),
+                    })),
                 }
                 acc
             },
@@ -128,6 +128,14 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
 }
 
 impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
+    /// Converts a tuple of `syn::ItemFn` (the function to build an FFI for) and `Vec<Ident>` (a
+    /// collection of raw types that can be exposed directly) to a `FnFFI`.
+    /// 
+    /// When building an `FnFFI` for a function inside of an impl, as with
+    /// `ffi_derive::expose_impl`, use `FnFFI::from(&FnFFIInputs)` instead, since `FnFFIInputs`
+    /// captures additional information available in the impl that may be necessary to build the
+    /// FFI function.
+    ///
     fn from(data: (&ItemFn, Vec<Ident>)) -> Self {
         let (method, raw_types) = data;
         let fn_name = method.sig.ident.clone();
@@ -142,11 +150,9 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
                             FnReceiver::Owned
                         }
                     }
-                    // TODO: We should use inputs.strip_local_alias(type) on parameters, too, since
-                    // they can occur in that position as well.
                     syn::FnArg::Typed(arg) => {
                         acc.0
-                            .push(FnParameterFFI::from((arg, raw_types.clone(), None)))
+                            .push(FnParameterFFI::from(FnParameterFFIInputs {arg, raw_types: raw_types.clone(), self_type: None}))
                     }
                 }
                 acc
@@ -286,10 +292,9 @@ impl FnFFI {
                                 raw: false,
                             },
                         );
-                        let map = quote!(
+                        quote!(
                             ffi_common::core::try_or_set_error!(return_value.map(|r| #conversion))
-                        );
-                        map
+                        )
                     }
                     _ => {
                         let native_type = r.native_type();
@@ -360,26 +365,39 @@ pub(crate) struct FnParameterFFI {
     pub(crate) original_type: Type,
 }
 
-impl From<(&PatType, Vec<Ident>, Option<Ident>)> for FnParameterFFI {
-    fn from(data: (&PatType, Vec<Ident>, Option<Ident>)) -> Self {
-        let (arg, raw_types, self_type) = data;
-        let name = if let syn::Pat::Ident(pat) = &*arg.pat {
+/// Representes the inputs for building a `FnParameterFFI`.
+///
+pub struct FnParameterFFIInputs<'a> {
+    /// The parameter argument, as in `foo: i32`.
+    /// 
+    arg: &'a PatType,
+    /// Any types that we should expose directly through the FFI.
+    /// 
+    raw_types: Vec<Ident>,
+    /// The type of `self` in this context, if available.
+    /// 
+    self_type: Option<Ident>,
+}
+
+impl<'a> From<FnParameterFFIInputs<'a>> for FnParameterFFI {
+    fn from(inputs: FnParameterFFIInputs<'_>) -> Self {
+        let name = if let syn::Pat::Ident(pat) = &*inputs.arg.pat {
             pat.ident.clone()
         } else {
             proc_macro_error::abort!(
-                arg.span(),
+                inputs.arg.span(),
                 "Anonymous parameter (not allowed in Rust 2018): {:?}"
             );
         };
         let native_type_data = TypeFFI::from(TypeAttributes::initial(
-            *arg.ty.clone(),
-            raw_types,
-            self_type,
+            *inputs.arg.ty.clone(),
+            inputs.raw_types,
+            inputs.self_type,
         ));
         Self {
             name,
             native_type_data,
-            original_type: *arg.ty.clone(),
+            original_type: *inputs.arg.ty.clone(),
         }
     }
 }

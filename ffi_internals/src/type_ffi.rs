@@ -13,21 +13,21 @@ use proc_macro_error::{abort, OptionExt};
 use quote::{format_ident, quote};
 use syn::{spanned::Spanned, Ident, Type};
 
-static STRING: &str = "String";
-static STR: &str = "str";
-static DATETIME: &str = "NaiveDateTime";
-static UUID: &str = "Uuid";
-static BOOL: &str = "bool";
-static U8: &str = "u8";
-static U16: &str = "u16";
-static U32: &str = "u32";
-static U64: &str = "u64";
-static I8: &str = "i8";
-static I16: &str = "i16";
-static I32: &str = "i32";
-static I64: &str = "i64";
-static F32: &str = "f32";
-static F64: &str = "f64";
+const STRING: &str = "String";
+const STR: &str = "str";
+const DATETIME: &str = "NaiveDateTime";
+const UUID: &str = "Uuid";
+const BOOL: &str = "bool";
+const U8: &str = "u8";
+const U16: &str = "u16";
+const U32: &str = "u32";
+const U64: &str = "u64";
+const I8: &str = "i8";
+const I16: &str = "i16";
+const I32: &str = "i32";
+const I64: &str = "i64";
+const F32: &str = "f32";
+const F64: &str = "f64";
 
 /// Describes a Rust type that is exposed via FFI (as the type of a field, or the type returned by a
 /// function, or a function parameter, etc).
@@ -55,25 +55,12 @@ pub enum TypeIdentifier {
 
 impl From<Ident> for TypeIdentifier {
     fn from(type_path: Ident) -> Self {
-        match type_path {
-            t if t == DATETIME => Self::DateTime,
-            t if t == STRING || t == STR => Self::String,
-            t if t == UUID => Self::Uuid,
-            t if t == BOOL
-                || t == U8
-                || t == U16
-                || t == U32
-                || t == U64
-                || t == I8
-                || t == I16
-                || t == I32
-                || t == I64
-                || t == F32
-                || t == F64 =>
-            {
-                Self::Raw(t)
-            }
-            t => Self::Boxed(t),
+        match &*type_path.to_string() {
+            DATETIME => Self::DateTime,
+            STRING | STR => Self::String,
+            UUID => Self::Uuid,
+            BOOL | U8 | U16 | U32 | U64 | I8 | I16 | I32 | I64 | F32 | F64 => Self::Raw(type_path),
+            _other => Self::Boxed(type_path),
         }
     }
 }
@@ -151,35 +138,16 @@ impl TypeFFI {
         }
 
         match self.native_type {
-            TypeIdentifier::Boxed(_) => {
-                if has_custom_implementation {
-                    // The expose_as type will take care of its own optionality and cloning; all
-                    // we need to do is make sure the pointer is safe (if this field is optional),
-                    // then let it convert with `into()`.
-                    let (conversion_or_borrow, none) = if self.is_borrow {
-                        (quote!(&*#field_name), quote!(&None))
-                    } else {
-                        (quote!((*Box::from_raw(#field_name)).into()), quote!(None))
-                    };
-                    if self.is_option {
-                        quote! {
-                            if #field_name.is_null() {
-                                #none
-                            } else {
-                                #conversion_or_borrow
-                            }
-                        }
-                    } else {
-                        quote! {
-                            #conversion_or_borrow
-                        }
-                    }
-                } else if self.is_option {
-                    let (conversion_or_borrow, none) = if self.is_borrow {
-                        (quote!(Some(&*#field_name)), quote!(&None))
-                    } else {
-                        (quote!(Some(*Box::from_raw(#field_name))), quote!(None))
-                    };
+            TypeIdentifier::Boxed(_) if has_custom_implementation => {
+                // The expose_as type will take care of its own optionality and cloning; all
+                // we need to do is make sure the pointer is safe (if this field is optional),
+                // then let it convert with `into()`.
+                let (conversion_or_borrow, none) = if self.is_borrow {
+                    (quote!(&*#field_name), quote!(&None))
+                } else {
+                    (quote!((*Box::from_raw(#field_name)).into()), quote!(None))
+                };
+                if self.is_option {
                     quote! {
                         if #field_name.is_null() {
                             #none
@@ -188,65 +156,80 @@ impl TypeFFI {
                         }
                     }
                 } else {
-                    let conversion_or_borrow = if self.is_borrow {
-                        quote!(&*#field_name)
+                    quote! {
+                        #conversion_or_borrow
+                    }
+                }
+            }
+            TypeIdentifier::Boxed(_) if self.is_option => {
+                let (conversion_or_borrow, none) = if self.is_borrow {
+                    (quote!(Some(&*#field_name)), quote!(&None))
+                } else {
+                    (quote!(Some(*Box::from_raw(#field_name))), quote!(None))
+                };
+                quote! {
+                    if #field_name.is_null() {
+                        #none
                     } else {
-                        quote!(*Box::from_raw(#field_name))
-                    };
-                    quote!(#conversion_or_borrow)
+                        #conversion_or_borrow
+                    }
+                }
+            }
+            TypeIdentifier::Boxed(_) => {
+                let conversion_or_borrow = if self.is_borrow {
+                    quote!(&*#field_name)
+                } else {
+                    quote!(*Box::from_raw(#field_name))
+                };
+                quote!(#conversion_or_borrow)
+            }
+            TypeIdentifier::DateTime if self.is_option => {
+                quote! {
+                    if #field_name.is_null() {
+                        None
+                    } else {
+                        Some((&*Box::from_raw(#field_name)).into())
+                    }
                 }
             }
             TypeIdentifier::DateTime => {
-                if self.is_option {
-                    quote! {
-                        if #field_name.is_null() {
-                            None
-                        } else {
-                            Some((&*Box::from_raw(#field_name)).into())
-                        }
+                quote!((&*Box::from_raw(#field_name)).into())
+            }
+            TypeIdentifier::Raw(_) if self.is_option => {
+                quote! {
+                    if #field_name.is_null() {
+                        None
+                    } else {
+                        Some(*Box::from_raw(#field_name))
                     }
-                } else {
-                    quote!((&*Box::from_raw(#field_name)).into())
                 }
             }
             TypeIdentifier::Raw(_) => {
-                if self.is_option {
-                    quote! {
-                        if #field_name.is_null() {
-                            None
-                        } else {
-                            Some(*Box::from_raw(#field_name))
-                        }
+                quote!(#field_name)
+            }
+            TypeIdentifier::String if self.is_option => {
+                quote! {
+                    if #field_name.is_null() {
+                        None
+                    } else {
+                        Some(ffi_common::core::string::string_from_c(#field_name))
                     }
-                } else {
-                    quote!(#field_name)
                 }
             }
             TypeIdentifier::String => {
-                if self.is_option {
-                    quote! {
-                        if #field_name.is_null() {
-                            None
-                        } else {
-                            Some(ffi_common::core::string::string_from_c(#field_name))
-                        }
+                quote!(ffi_common::core::string::string_from_c(#field_name))
+            }
+            TypeIdentifier::Uuid if self.is_option => {
+                quote! {
+                    if #field_name.is_null() {
+                        None
+                    } else {
+                        Some(ffi_common::core::string::uuid_from_c(#field_name))
                     }
-                } else {
-                    quote!(ffi_common::core::string::string_from_c(#field_name))
                 }
             }
             TypeIdentifier::Uuid => {
-                if self.is_option {
-                    quote! {
-                        if #field_name.is_null() {
-                            None
-                        } else {
-                            Some(ffi_common::core::string::uuid_from_c(#field_name))
-                        }
-                    }
-                } else {
-                    quote!(ffi_common::core::string::uuid_from_c(#field_name))
-                }
+                quote!(ffi_common::core::string::uuid_from_c(#field_name))
             }
         }
     }
@@ -468,6 +451,19 @@ impl TypeFFI {
             quote!(Option::<#t>)
         } else {
             t
+        }
+    }
+
+    /// Returns a tuple containing 1) the conversion operation to perform for this type on the
+    /// consumer side, 2) a closing parenthesis, and 3) the signature for returning this type from a
+    /// consumer function.
+    /// 
+    pub(crate) fn consumer_return_type_components(&self) -> (String, String, String) {
+        let ty = self.consumer_type(None);
+        if self.is_result {
+            ("handle(result: ".to_string(), ")".to_string(), format!("-> Result<{}, RustError>", ty))
+        } else {
+            (format!("{}.fromRust(", ty), ")".to_string(), format!("-> {}", ty))
         }
     }
 }

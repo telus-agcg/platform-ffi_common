@@ -444,7 +444,7 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         impl_ffi.generate_consumer(ffi_internals::consumer::HEADER),
         &out_dir,
     )
-    .unwrap_or_else(|err| abort!("Error writing consumer file: {}", err));
+    .unwrap_or_else(|err| abort!(item_impl.span(), "Error writing consumer file: {}", err));
     let ffi = impl_ffi.generate_ffi();
 
     let output = ffi_internals::quote::quote! {

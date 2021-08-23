@@ -1,7 +1,7 @@
 mod custom_ffi;
 
 #[test]
-fn unsafetest_custom_ffi() {
+fn test_custom_ffi() {
     let value = "meow";
     unsafe {
         let ffi_type = custom_ffi::ffi::ffi_type_init(ffi_common::core::ffi_string!(value));

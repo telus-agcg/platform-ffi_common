@@ -20,24 +20,9 @@ impl FnFFI {
             ""
         };
         let (return_conversion, close_conversion, return_sig) =
-            if let Some(return_type) = &self.return_type {
-                let ty = return_type.consumer_type(None);
-                (
-                    if return_type.is_result {
-                        "handle(result: ".to_string()
-                    } else {
-                        format!("{}.fromRust(", ty)
-                    },
-                    ")".to_string(),
-                    if return_type.is_result {
-                        format!("-> Result<{}, RustError>", ty)
-                    } else {
-                        format!("-> {}", ty)
-                    },
-                )
-            } else {
-                (String::new(), String::new(), String::new())
-            };
+            self.return_type
+                .as_ref()
+                .map_or_else(|| (String::new(), String::new(), String::new()), crate::type_ffi::TypeFFI::consumer_return_type_components);
         format!(
             r#"
     {static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
@@ -75,24 +60,9 @@ impl FnFFI {
             ""
         };
         let (return_conversion, close_conversion, return_sig) =
-            if let Some(return_type) = &self.return_type {
-                let ty = return_type.consumer_type(None);
-                (
-                    if return_type.is_result {
-                        "handle(result: ".to_string()
-                    } else {
-                        format!("{}.fromRust(", ty)
-                    },
-                    ")".to_string(),
-                    if return_type.is_result {
-                        format!("-> Result<{}, RustError>", ty)
-                    } else {
-                        format!("-> {}", ty)
-                    },
-                )
-            } else {
-                (String::new(), String::new(), String::new())
-            };
+            self.return_type
+                .as_ref()
+                .map_or_else(|| (String::new(), String::new(), String::new()), crate::type_ffi::TypeFFI::consumer_return_type_components);
         format!(
             r#"
     {header}
