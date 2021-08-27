@@ -1,4 +1,10 @@
-use syn::{Attribute, Ident, Lit, Meta, NestedMeta, Path};
+//!
+//! Contains data structures for describing and implementations for parsing a field's FFI
+//! attributes.
+//!
+
+use proc_macro_error::emit_error;
+use syn::{spanned::Spanned, Attribute, Ident, Lit, Meta, NestedMeta, Path};
 
 /// Field-level FFI helper attributes.
 ///
@@ -26,11 +32,11 @@ impl FieldAttributes {
     /// If there's an `expose_as` attribute, get the ident of the last segment in the path (i.e.,
     /// the ident of the type being referenced).
     ///
+    #[must_use]
     pub fn expose_as_ident(&self) -> Option<&Ident> {
         self.expose_as
             .as_ref()
-            .map(|p| p.segments.last().map(|s| &s.ident))
-            .flatten()
+            .and_then(|p| p.segments.last().map(|s| &s.ident))
     }
 }
 
@@ -38,7 +44,7 @@ impl From<&[Attribute]> for FieldAttributes {
     fn from(attrs: &[Attribute]) -> Self {
         let mut expose_as: Option<Path> = None;
         let mut raw = false;
-        for meta_item in attrs.iter().flat_map(super::parse_ffi_meta).flatten() {
+        for meta_item in attrs.iter().flat_map(super::parse_ffi_meta) {
             match &meta_item {
                 NestedMeta::Meta(Meta::NameValue(m)) if m.path.is_ident("expose_as") => {
                     if let Lit::Str(lit) = &m.lit {
@@ -48,8 +54,8 @@ impl From<&[Attribute]> for FieldAttributes {
                 NestedMeta::Meta(Meta::Path(p)) if p.is_ident("raw") => {
                     raw = true;
                 }
-                other => {
-                    panic!("Unsupported ffi attribute type: {:?}", other);
+                _other => {
+                    emit_error!(meta_item.span(), "Unsupported ffi attribute -- only `raw` and `expose_as` are valid in this position");
                 }
             }
         }
@@ -85,7 +91,7 @@ mod tests {
         .named
         .first()
         .expect("Failed to parse field")
-        .to_owned();
+        .clone();
         assert!(FieldAttributes::from(&*field.attrs).raw);
     }
 
@@ -111,7 +117,7 @@ mod tests {
         .named
         .first()
         .expect("Failed to parse field")
-        .to_owned();
+        .clone();
         assert!(!FieldAttributes::from(&*field.attrs).raw);
     }
 }

@@ -1,34 +1,27 @@
 [workspace]
 members = [
     "ffi_common",
-    "ffi_consumer",
     "ffi_core",
     "ffi_derive",
     "ffi_internals"
 ]
 
-# [patch."agrian-registry".ffi_common]
-# path = "./ffi_common"
-# # git = "ssh://git@github.com/agrian-inc/ffi_common.git"
-# # branch = "develop"
+[patch."agrian-registry".ffi_common]
+path = "./ffi_common"
+# git = "ssh://git@github.com/agrian-inc/ffi_common.git"
+# branch = "develop"
 
-# [patch."agrian-registry".ffi_consumer]
-# path = "./ffi_consumer"
-# # git = "ssh://git@github.com/agrian-inc/ffi_common.git"
-# # branch = "develop"
+[patch."agrian-registry".ffi_core]
+path = "./ffi_core"
+# git = "ssh://git@github.com/agrian-inc/ffi_common.git"
+# branch = "develop"
 
-# # [patch."https://github.com/agrian-inc/ffi_common"]
-# # [patch."agrian-registry".ffi_core]
-# # path = "./ffi_core"
-# # # git = "ssh://git@github.com/agrian-inc/ffi_common.git"
-# # # branch = "develop"
+[patch."agrian-registry".ffi_derive]
+path = "./ffi_derive"
+# git = "ssh://git@github.com/agrian-inc/ffi_common.git"
+# branch = "develop"
 
-# [patch."agrian-registry".ffi_derive]
-# path = "./ffi_derive"
-# # git = "ssh://git@github.com/agrian-inc/ffi_common.git"
-# # branch = "develop"
-
-# [patch."agrian-registry".ffi_internals]
-# path = "./ffi_internals"
-# # git = "ssh://git@github.com/agrian-inc/ffi_common.git"
-# # branch = "develop"
+[patch."agrian-registry".ffi_internals]
+path = "./ffi_internals"
+# git = "ssh://git@github.com/agrian-inc/ffi_common.git"
+# branch = "develop"

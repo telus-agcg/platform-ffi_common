@@ -4,17 +4,18 @@
 //!
 
 use crate::{
-    alias_resolution,
-    native_type_data::{Context, NativeType, NativeTypeData},
-    parsing,
+    alias_resolution, parsing,
+    type_ffi::{Context, TypeFFI, TypeIdentifier},
 };
 use heck::SnakeCase;
 use parsing::FieldAttributes;
 use proc_macro2::TokenStream;
+use proc_macro_error::abort;
 use quote::{format_ident, quote};
-use syn::{Field, Ident};
+use syn::{spanned::Spanned, Field, Ident};
 
-/// Represents the components of the generated FFI for a field.
+/// Represents the components of a field for generating an FFI.
+///
 #[derive(Debug)]
 pub struct FieldFFI {
     /// The type to which this field belongs.
@@ -27,7 +28,7 @@ pub struct FieldFFI {
 
     /// The type information for generating an FFI for this field.
     ///
-    pub native_type_data: NativeTypeData,
+    pub native_type_data: TypeFFI,
 
     /// The FFI helper attribute annotations on this field.
     ///
@@ -40,7 +41,7 @@ impl FieldFFI {
     ///
     #[must_use]
     pub fn getter_name(&self) -> Ident {
-        if self.native_type_data.option {
+        if self.native_type_data.is_option {
             format_ident!(
                 "get_optional_{}_{}",
                 self.type_name.to_string().to_snake_case(),
@@ -66,79 +67,14 @@ impl FieldFFI {
         let getter_name = &self.getter_name();
         let ffi_type = &self
             .native_type_data
-            .ffi_type(self.attributes.expose_as_ident(), &Context::Return);
-        let conversion: TokenStream = if self.native_type_data.vec {
-            if self.native_type_data.option {
-                quote!(data.#field_name.as_deref().into())
-            } else {
-                quote!((&*data.#field_name).into())
-            }
-        } else {
-            match &self.native_type_data.native_type {
-                NativeType::Boxed(_) => {
-                    if self.native_type_data.option {
-                        let mut return_value = quote!(f.clone());
-                        // If this field is exposed as a different type for FFI, convert it back to
-                        // the native type.
-                        if self.attributes.expose_as.is_some() {
-                            return_value = quote!(#return_value.into())
-                        }
-                        quote!(
-                            data.#field_name.as_ref().map_or(ptr::null(), |f| {
-                                Box::into_raw(Box::new(#return_value))
-                            })
-                        )
-                    } else {
-                        let mut return_value = quote!(data.#field_name.clone());
-                        // If this field is exposed as a different type for FFI, convert it back to
-                        // the native type.
-                        if self.attributes.expose_as.is_some() {
-                            return_value = quote!(#return_value.into())
-                        }
-                        quote!(Box::into_raw(Box::new(#return_value)))
-                    }
-                }
-                NativeType::DateTime => {
-                    if self.native_type_data.option {
-                        quote!(
-                            data.#field_name.as_ref().map_or(ptr::null(), |f| {
-                                Box::into_raw(Box::new(f.into()))
-                            })
-                        )
-                    } else {
-                        quote!(Box::into_raw(Box::new((&data.#field_name).into())))
-                    }
-                }
-                NativeType::Raw(inner) => {
-                    if self.native_type_data.option {
-                        let boxer =
-                            format_ident!("option_{}_init", inner.to_string().to_snake_case());
-                        quote!(
-                            match data.#field_name {
-                                Some(data) => #boxer(true, data),
-                                None => #boxer(false, #inner::default()),
-                            }
-                        )
-                    } else {
-                        quote!(data.#field_name.clone().into())
-                    }
-                }
-                NativeType::String | NativeType::Uuid => {
-                    if self.native_type_data.option {
-                        quote!(
-                            data.#field_name.as_ref().map_or(ptr::null(), |s| {
-                                ffi_common::ffi_core::ffi_string!(s.to_string())
-                            })
-                        )
-                    } else {
-                        quote!(ffi_string!(data.#field_name.to_string()))
-                    }
-                }
-            }
-        };
+            .ffi_type(self.attributes.expose_as_ident(), Context::Return);
+        let accessor = quote!(data.#field_name);
+        let conversion = self
+            .native_type_data
+            .rust_to_ffi_value(&accessor, &self.attributes);
 
         quote! {
-            ffi_common::ffi_core::paste! {
+            ffi_common::core::paste! {
                 #[no_mangle]
                 #[doc = "Get `" #field_name "` for this `" #type_name"`."]
                 pub unsafe extern "C" fn #getter_name(
@@ -159,7 +95,7 @@ impl FieldFFI {
         let field_name = &self.field_name;
         let ffi_type = &self
             .native_type_data
-            .ffi_type(self.attributes.expose_as_ident(), &Context::Argument);
+            .ffi_type(self.attributes.expose_as_ident(), Context::Argument);
         quote!(#field_name: #ffi_type,)
     }
 
@@ -181,7 +117,7 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
         let field_name = field
             .ident
             .as_ref()
-            .unwrap_or_else(|| panic!("Expected field: {:?} to have an identifier.", &field))
+            .unwrap_or_else(|| abort!(field.span(), "Expected field to have an identifier."))
             .clone();
         let attributes = FieldAttributes::from(&*field.attrs);
         let (wrapping_type, unaliased_field_type) = match parsing::get_segment_for_field(&field.ty)
@@ -191,22 +127,27 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
                     parsing::separate_wrapping_type_from_inner_type(segment);
                 (
                     wrapping_type,
-                    alias_resolution::resolve_type_alias(&ident, alias_modules, None).unwrap(),
+                    alias_resolution::resolve_type_alias(&ident, alias_modules, None)
+                        .unwrap_or_else(|err| {
+                            abort!(field.span(), "Alias resolution error: {}", err)
+                        }),
                 )
             }
-            None => panic!("No path segment (field without a type?)"),
+            None => {
+                abort!(field.ty.span(), "No path segment (field without a type?")
+            }
         };
 
         // If this has a raw attribute, bypass the normal `NativeType` logic and use `NativeType::raw`.
         let field_type = if attributes.raw {
-            NativeType::Raw(unaliased_field_type)
+            TypeIdentifier::Raw(unaliased_field_type)
         } else {
-            NativeType::from(unaliased_field_type)
+            TypeIdentifier::from(unaliased_field_type)
         };
 
-        let native_type_data = NativeTypeData::from((field_type, wrapping_type));
+        let native_type_data = TypeFFI::from((field_type, wrapping_type));
 
-        FieldFFI {
+        Self {
             type_name,
             field_name,
             native_type_data,

@@ -3,12 +3,15 @@
 //!
 
 use chrono::NaiveDateTime;
-use ffi_common::ffi_core::{*, datetime::FFIArrayTimeStamp, string::FFIArrayString};
+use ffi_common::{
+    core::{datetime::FFIArrayTimeStamp, string::FFIArrayString, *},
+    derive,
+};
 use std::{convert::TryInto, ffi::CStr};
 use uuid::Uuid;
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, ffi_derive::FFI)]
+#[derive(Clone, Copy, Debug, PartialEq, derive::FFI)]
 pub enum TestEnum {
     Variant1,
     Variant2,
@@ -22,7 +25,7 @@ impl Default for TestEnum {
 
 use crate::test_enum_ffi::FFIArrayTestEnum;
 
-#[derive(Debug, Clone, ffi_derive::FFI)]
+#[derive(Debug, Clone, derive::FFI)]
 pub struct TestStruct {
     string: String,
     i32_collection: Vec<i32>,
@@ -91,7 +94,7 @@ fn test_struct_ffi() {
             Vec::from(get_test_struct_i32_collection(test_struct))
         );
         assert_eq!(variant, get_test_struct_enum_variant(test_struct));
-        assert_eq!(double, get_test_struct_f64_thing(test_struct));
+        approx::assert_relative_eq!(double, get_test_struct_f64_thing(test_struct));
         assert_eq!(
             input_string_vec,
             Vec::<String>::from(get_test_struct_collection_of_strings(test_struct))

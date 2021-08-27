@@ -1,3 +1,25 @@
+//!
+//! This crate provides low level FFI functionality for primitives, error handling, and generating
+//! FFI-safe structures for `Option` and `Vec` generics for simple struct and enum types.
+//!
+
+#![deny(unused_extern_crates, missing_docs)]
+#![warn(
+    clippy::all,
+    clippy::correctness,
+    clippy::nursery,
+    clippy::pedantic,
+    future_incompatible,
+    missing_copy_implementations,
+    nonstandard_style,
+    rust_2018_idioms,
+    trivial_casts,
+    trivial_numeric_casts,
+    unused_qualifications,
+    unused_results,
+    variant_size_differences
+)]
+
 pub use paste::paste;
 
 #[macro_use]

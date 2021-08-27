@@ -63,10 +63,20 @@ fn option_conformance(consumer_type: &str, ffi_type: &str, init: &str, free: &st
     format!(
         r#"
 public extension Optional where Wrapped == {} {{
-    func toRust() -> UnsafeMutablePointer<{}>? {{
+    func clone() -> UnsafeMutablePointer<{}>? {{
         switch self {{
         case let .some(value):
-            let v = value.toRust()
+            let v = value.clone()
+            return UnsafeMutablePointer(mutating: {}(true, v))
+        case .none:
+            return nil
+        }}
+    }}
+
+    func borrowReference() -> UnsafeMutablePointer<{}>? {{
+        switch self {{
+        case let .some(value):
+            let v = value.borrowReference()
             return UnsafeMutablePointer(mutating: {}(true, v))
         case .none:
             return nil
@@ -87,7 +97,7 @@ public extension Optional where Wrapped == {} {{
     }}
 }}
 "#,
-        consumer_type, ffi_type, init, ffi_type, ffi_type, free
+        consumer_type, ffi_type, init, ffi_type, init, ffi_type, ffi_type, free
     )
 }
 
@@ -99,7 +109,11 @@ fn consumer_type_base(consumer_type: &str, ffi_type: &str) -> String {
 extension {}: NativeData {{
     public typealias ForeignType = {}
 
-    public func toRust() -> ForeignType {{
+    public func clone() -> ForeignType {{
+        return self
+    }}
+
+    public func borrowReference() -> ForeignType {{
         return self
     }}
 

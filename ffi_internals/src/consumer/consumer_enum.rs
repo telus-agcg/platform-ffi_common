@@ -56,10 +56,20 @@ extension {}: FFIArray {{
         format!(
             r#"
 public extension Optional where Wrapped == {} {{
-    func toRust() -> UnsafeMutablePointer<{}>? {{
+    func clone() -> UnsafeMutablePointer<{}>? {{
         switch self {{
         case let .some(value):
-            let v = value.toRust()
+            let v = value.clone()
+            return UnsafeMutablePointer(mutating: {}(true, v))
+        case .none:
+            return nil
+        }}
+    }}
+
+    func borrowReference() -> UnsafeMutablePointer<{}>? {{
+        switch self {{
+        case let .some(value):
+            let v = value.borrowReference()
             return UnsafeMutablePointer(mutating: {}(true, v))
         case .none:
             return nil
@@ -85,6 +95,8 @@ public extension Optional where Wrapped == {} {{
             self.type_name,
             self.option_init(),
             self.type_name,
+            self.option_init(),
+            self.type_name,
             self.type_name,
             self.option_free(),
         )
@@ -100,7 +112,11 @@ public extension Optional where Wrapped == {} {{
 extension {}: NativeData {{
     public typealias ForeignType = {}
 
-    public func toRust() -> ForeignType {{
+    public func clone() -> ForeignType {{
+        return self
+    }}
+
+    public func borrowReference() -> ForeignType {{
         return self
     }}
 
@@ -135,7 +151,7 @@ extension {}: NativeArrayData {{
 impl From<ConsumerEnum> for String {
     fn from(consumer: ConsumerEnum) -> Self {
         [
-            crate::HEADER,
+            super::HEADER,
             &consumer.native_data_impl(),
             &consumer.array_conformance(),
             &consumer.consumer_array_type(),

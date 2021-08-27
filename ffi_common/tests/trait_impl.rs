@@ -28,7 +28,7 @@ trait Meows {
     fn meow(&self, volume: Option<Volume>, count: u8) -> Vec<Meow>;
 }
 
-#[ffi_derive::expose_items(ffi_imports(animals::cats::meow_ffi::FFIArrayMeow))]
+#[ffi_derive::expose_impl(ffi_imports(animals::cats::meow_ffi::FFIArrayMeow))]
 impl Meows for Cat {
     fn meow(&self, volume: Option<Volume>, count: u8) -> Vec<Meow> {
         let demands_food = if let Some(volume) = volume {

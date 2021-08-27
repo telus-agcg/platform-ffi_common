@@ -1,11 +1,11 @@
 //!
 //! # `ffi_internals`
 //!
-//! Contains all the parsing and common data structures used by `ffi_derive` and `ffi_consumer`, so
-//! they can be shared between the codegen crates without needing to expose them in `ffi_common`,
-//! which has more general FFI stuff.
+//! Contains all the parsing logic and data structures used by `ffi_derive`, as well as the
+//! `consumer` module for generating consumer code.
 //!
 
+#![deny(unused_extern_crates)]
 #![warn(
     clippy::all,
     clippy::correctness,
@@ -13,27 +13,27 @@
     clippy::pedantic,
     future_incompatible,
     missing_copy_implementations,
-    // missing_docs,
+    missing_docs,
     nonstandard_style,
+    rust_2018_idioms,
     trivial_casts,
     trivial_numeric_casts,
-    unreachable_pub,
-    unused_extern_crates,
     unused_qualifications,
     unused_results,
     variant_size_differences
 )]
 
 pub mod alias_resolution;
+pub mod consumer;
 pub mod impl_internals;
-pub mod native_type_data;
 pub mod parsing;
 pub mod struct_internals;
+pub mod type_ffi;
 
 // Reexports
 pub use heck;
-pub use syn;
 pub use quote;
+pub use syn;
 
 /// Creates a consumer directory at `out_dir` and returns its path.
 ///
@@ -41,7 +41,7 @@ pub use quote;
 ///
 /// Returns a `std::io::Error` if anything prevents us from creating `dir`.
 ///
-pub fn create_consumer_dir(dir: &str) -> Result<&str, std::io::Error> {
+fn create_consumer_dir(dir: &str) -> Result<&str, std::io::Error> {
     std::fs::create_dir_all(dir)?;
     Ok(dir)
 }
@@ -72,10 +72,21 @@ pub fn consumer_type_for(native_type: &str, option: bool) -> String {
     converted
 }
 
-pub fn write_consumer_file(file_name: &str, contents: String, out_dir: &str) {
-    let consumer_dir = create_consumer_dir(out_dir)
-        .unwrap_or_else(|e| panic!("Failed to create dir at {} with error {}.", out_dir, e));
+/// Writes `contents` to `file_name` in `out_dir`.
+///
+/// # Errors
+///
+/// Returns an `std::io::Error` if:
+/// 1. `out_dir` does not already exist or we cannot create it.
+/// 1. we cannot write `contents` to `output_file`.
+///
+pub fn write_consumer_file(
+    file_name: &str,
+    contents: String,
+    out_dir: &str,
+) -> Result<(), std::io::Error> {
+    let consumer_dir = create_consumer_dir(out_dir)?;
     let output_file = format!("{}/{}", consumer_dir, file_name);
-    std::fs::write(&output_file, contents)
-        .unwrap_or_else(|e| panic!("Failed to write {} with error {}", output_file, e));
+    std::fs::write(&output_file, contents)?;
+    Ok(())
 }

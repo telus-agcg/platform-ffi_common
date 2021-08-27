@@ -11,10 +11,19 @@ extension FFIArrayTimeStamp: FFIArray {
 }
 
 public extension Optional where Wrapped == Date {
-    func toRust() -> OpaquePointer? {
+    func clone() -> OpaquePointer? {
         switch self {
         case let .some(value):
-            return value.toRust()
+            return value.clone()
+        case .none:
+            return nil
+        }
+    }
+
+    func borrowReference() -> OpaquePointer? {
+        switch self {
+        case let .some(value):
+            return value.borrowReference()
         case .none:
             return nil
         }
@@ -33,7 +42,12 @@ extension Date: NativeData {
 
     private static let nsecs_per_sec: Double = 1_000_000_000
 
-    public func toRust() -> ForeignType {
+    public func clone() -> ForeignType {
+        let (seconds, subSeconds) = modf(timeIntervalSince1970)
+        return time_stamp_init(Int64(seconds), UInt32(subSeconds * Self.nsecs_per_sec))
+    }
+
+    public func borrowReference() -> ForeignType {
         let (seconds, subSeconds) = modf(timeIntervalSince1970)
         return time_stamp_init(Int64(seconds), UInt32(subSeconds * Self.nsecs_per_sec))
     }
