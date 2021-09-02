@@ -40,7 +40,7 @@ pub(super) fn generate(native_type: &str, ffi_type: &str, consumer_type: &str) -
 ///
 fn array_conformance(array_name: &str, ffi_type: &str, init: &str, free: &str) -> String {
     format!(
-        r#"
+        "
 extension {}: FFIArray {{
     public typealias Value = {}
 
@@ -52,7 +52,7 @@ extension {}: FFIArray {{
         {}(array)
     }}
 }}
-"#,
+",
         array_name, ffi_type, init, free
     )
 }
@@ -61,7 +61,7 @@ extension {}: FFIArray {{
 ///
 fn option_conformance(consumer_type: &str, ffi_type: &str, init: &str, free: &str) -> String {
     format!(
-        r#"
+        "
 public extension Optional where Wrapped == {} {{
     func clone() -> UnsafeMutablePointer<{}>? {{
         switch self {{
@@ -96,7 +96,7 @@ public extension Optional where Wrapped == {} {{
         {}(option)
     }}
 }}
-"#,
+",
         consumer_type, ffi_type, init, ffi_type, init, ffi_type, ffi_type, free
     )
 }
@@ -105,7 +105,7 @@ public extension Optional where Wrapped == {} {{
 ///
 fn consumer_type_base(consumer_type: &str, ffi_type: &str) -> String {
     format!(
-        r#"
+        "
 extension {}: NativeData {{
     public typealias ForeignType = {}
 
@@ -121,7 +121,7 @@ extension {}: NativeData {{
         return foreignObject
     }}
 }}
-"#,
+",
         consumer_type, ffi_type
     )
 }
@@ -130,11 +130,11 @@ extension {}: NativeData {{
 ///
 fn consumer_array_type(consumer_type: &str, ffi_array_type: &str) -> String {
     format!(
-        r#"
+        "
 extension {}: NativeArrayData {{
     public typealias FFIArrayType = {}
 }}
-"#,
+",
         consumer_type, ffi_array_type
     )
 }

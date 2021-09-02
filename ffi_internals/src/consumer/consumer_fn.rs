@@ -20,15 +20,16 @@ impl FnFFI {
             ""
         };
         let (return_conversion, close_conversion, return_sig) =
-            self.return_type
-                .as_ref()
-                .map_or_else(|| (String::new(), String::new(), String::new()), crate::type_ffi::TypeFFI::consumer_return_type_components);
+            self.return_type.as_ref().map_or_else(
+                || (String::new(), String::new(), String::new()),
+                crate::type_ffi::TypeFFI::consumer_return_type_components,
+            );
         format!(
-            r#"
+            "
     {static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
         {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
     }}
-            "#,
+",
             static_keyword = static_keyword,
             consumer_fn_name = self.fn_name.to_string().to_mixed_case(),
             consumer_parameters = self.consumer_parameters(),
@@ -46,13 +47,7 @@ impl FnFFI {
     /// function.
     ///
     #[must_use]
-    pub fn generate_consumer_extension(
-        &self,
-        header: &str,
-        consumer_type: &str,
-        module_name: &Ident,
-        imports: Option<&str>,
-    ) -> String {
+    pub fn generate_consumer_extension(&self, consumer_type: &str, module_name: &Ident) -> String {
         // Include the keyword `static` if this function doesn't take a receiver.
         let static_keyword = if self.receiver == FnReceiver::None {
             "static"
@@ -60,24 +55,23 @@ impl FnFFI {
             ""
         };
         let (return_conversion, close_conversion, return_sig) =
-            self.return_type
-                .as_ref()
-                .map_or_else(|| (String::new(), String::new(), String::new()), crate::type_ffi::TypeFFI::consumer_return_type_components);
-        format!(
-            r#"
-    {header}
-    {imports}
+            self.return_type.as_ref().map_or_else(
+                || (String::new(), String::new(), String::new()),
+                crate::type_ffi::TypeFFI::consumer_return_type_components,
+            );
 
-    extension {consumer_type} {{
+        let extension = format!(
+            "
+extension {consumer_type} {{
+
     {static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
         {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
     }}
-    }}
-            "#,
+
+}}
+",
             static_keyword = static_keyword,
-            header = header,
             consumer_type = consumer_type,
-            imports = imports.unwrap_or_default(),
             consumer_fn_name = self.fn_name.to_string().to_mixed_case(),
             consumer_parameters = self.consumer_parameters(),
             return_sig = return_sig,
@@ -85,7 +79,9 @@ impl FnFFI {
             ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
             ffi_parameters = self.ffi_calling_arguments(),
             close_conversion = close_conversion,
-        )
+        );
+
+        [super::header_and_imports(&[]), extension].join("")
     }
 
     fn consumer_parameters(&self) -> String {

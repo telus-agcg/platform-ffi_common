@@ -12,6 +12,8 @@ use crate::{
     type_ffi::TypeFFI,
 };
 
+const TAB_SIZE: usize = 4;
+
 /// Contains the data required to generate a consumer type, and associated functions for doing so.
 ///
 pub struct ConsumerStruct {
@@ -63,41 +65,34 @@ impl ConsumerStruct {
     /// correctly wraps the generated FFI module.
     ///
     fn type_definition(&self) -> String {
-        let additional_imports = super::build_imports(&*self.required_imports).join("\n");
         format!(
-            r#"
-{common_framework}
-{additional_imports}
-
+            "
 public final class {class} {{
+
     internal let pointer: OpaquePointer
 
-    {init_impl}
+{init_impl}
 
     private init(_ pointer: OpaquePointer) {{
         self.pointer = pointer
     }}
 
     deinit {{
-        {free}(pointer)
+        {free_fn_name}(pointer)
     }}
 {getters}
 }}
-"#,
-            common_framework = option_env!("FFI_COMMON_FRAMEWORK")
-                .map(|f| format!("import {}", f))
-                .unwrap_or_default(),
-            additional_imports = additional_imports,
+",
             class = self.type_name,
             init_impl = self.init_impl(),
-            free = self.free_fn_name,
+            free_fn_name = self.free_fn_name,
             getters = self.consumer_getters
         )
     }
 
     fn ffi_array_impl(&self) -> String {
         format!(
-            r#"
+            "
 extension {array_name}: FFIArray {{
     public typealias Value = OpaquePointer?
 
@@ -109,7 +104,7 @@ extension {array_name}: FFIArray {{
         {array_free}(array)
     }}
 }}
-"#,
+",
             array_name = self.array_name(),
             array_init = self.array_init(),
             array_free = self.array_free(),
@@ -118,7 +113,7 @@ extension {array_name}: FFIArray {{
 
     fn native_data_impl(&self) -> String {
         format!(
-            r#"
+            "
 extension {}: NativeData {{
     public typealias ForeignType = OpaquePointer?
 
@@ -141,14 +136,14 @@ extension {}: NativeData {{
         return Self(foreignObject!)
     }}
 }}
-"#,
+",
             self.type_name, self.clone_fn_name,
         )
     }
 
     fn option_impl(&self) -> String {
         format!(
-            r#"
+            "
 public extension Optional where Wrapped == {} {{
     func clone() -> OpaquePointer? {{
         switch self {{
@@ -175,18 +170,18 @@ public extension Optional where Wrapped == {} {{
         return Wrapped.fromRust(ptr)
     }}
 }}
-"#,
+",
             self.type_name
         )
     }
 
     fn array_impl(&self) -> String {
         format!(
-            r#"
+            "
 extension {}: NativeArrayData {{
     public typealias FFIArrayType = {}
 }}
-"#,
+",
             self.type_name,
             self.array_name()
         )
@@ -195,33 +190,36 @@ extension {}: NativeArrayData {{
     fn init_impl(&self) -> String {
         if self.failable_init {
             format!(
-                r#"
-    internal init?(
-        {args}
-    ) {{
-        guard let pointer = {ffi_init}(
-            {ffi_args}
-        ) else {{
-            return nil
-        }}
-        self.pointer = pointer
-    }}
-                "#,
+                "{spacer:l1$}internal init?(
+{args}
+{spacer:l1$}) {{
+{spacer:l2$}guard let pointer = {ffi_init}(
+{ffi_args}
+{spacer:l2$}) else {{
+{spacer:l3$}return nil
+{spacer:l2$}}}
+{spacer:l2$}self.pointer = pointer
+{spacer:l1$}}}",
+                spacer = " ",
+                l1 = TAB_SIZE,
+                l2 = TAB_SIZE * 2,
+                l3 = TAB_SIZE * 3,
                 args = self.consumer_init_args,
                 ffi_init = self.init_fn_name,
                 ffi_args = self.ffi_init_args,
             )
         } else {
             format!(
-                r#"
-    public init(
-        {args}
-    ) {{
-        self.pointer = {ffi_init}(
-            {ffi_args}
-        )
-    }}
-                "#,
+                "{spacer:l1$}public init(
+{args}
+{spacer:l1$}) {{
+{spacer:l2$}self.pointer = {ffi_init}(
+{ffi_args}
+{spacer:l2$})
+{spacer:l1$}}}",
+                spacer = " ",
+                l1 = TAB_SIZE,
+                l2 = TAB_SIZE * 2,
                 args = self.consumer_init_args,
                 ffi_init = self.init_fn_name,
                 ffi_args = self.ffi_init_args,
@@ -278,8 +276,12 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
                 let consumer_type = TypeFFI::from((arg_type, required)).consumer_type(None);
                 // This looks like `foo: Bar,`.
                 acc.0.push_str(&format!(
-                    "        {}: {}{}",
-                    arg_ident_string, consumer_type, trailing_punctuation
+                    "{:indent_level$}{}: {}{}",
+                    " ",
+                    arg_ident_string,
+                    consumer_type,
+                    trailing_punctuation,
+                    indent_level = TAB_SIZE * 2,
                 ));
                 // It's worth noting here that we always clone when calling an initializer -- the
                 // new Rust instance needs to take ownership of the data because it will be owned by
@@ -287,8 +289,11 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
                 // parameters passed to it.
                 // This looks like `foo.clone(),`.
                 acc.1.push_str(&format!(
-                    "            {}.clone(){}",
-                    arg_ident_string, trailing_punctuation
+                    "{:indent_level$}{}.clone(){}",
+                    " ",
+                    arg_ident_string,
+                    trailing_punctuation,
+                    indent_level = TAB_SIZE * 3,
                 ));
                 acc
             },
@@ -329,15 +334,17 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
 
                     acc.push_str(&format!(
                         "
-    {} var {}: {} {{
-        {}.fromRust({}(pointer))
-    }}
-    ",
-                        access_modifier,
-                        consumer_getter_name,
-                        consumer_type,
-                        consumer_type,
-                        getter_ident.to_string()
+{spacer:l1$}{access_modifier} var {consumer_getter_name}: {consumer_type} {{
+{spacer:l2$}{consumer_type}.fromRust({getter_ident}(pointer))
+{spacer:l1$}}}
+",
+                        spacer = " ",
+                        l1 = TAB_SIZE,
+                        l2 = TAB_SIZE * 2,
+                        access_modifier = access_modifier,
+                        consumer_getter_name = consumer_getter_name,
+                        consumer_type = consumer_type,
+                        getter_ident = getter_ident.to_string()
                     ));
                     acc
                 });
@@ -377,12 +384,12 @@ impl From<&StructFFI> for ConsumerStruct {
 impl From<&ConsumerStruct> for String {
     fn from(consumer: &ConsumerStruct) -> Self {
         [
-            super::HEADER,
-            &consumer.type_definition(),
-            &consumer.ffi_array_impl(),
-            &consumer.native_data_impl(),
-            &consumer.option_impl(),
-            &consumer.array_impl(),
+            super::header_and_imports(&*consumer.required_imports),
+            consumer.type_definition(),
+            consumer.ffi_array_impl(),
+            consumer.native_data_impl(),
+            consumer.option_impl(),
+            consumer.array_impl(),
         ]
         .join("")
     }
@@ -403,7 +410,9 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
             };
             // This looks like `foo: Bar,`.
             acc.0.push_str(&format!(
-                "        {field}: {type_name}{punct}",
+                "{spacer:level$}{field}: {type_name}{punct}",
+                spacer = " ",
+                level = TAB_SIZE * 2,
                 field = f.field_name.to_string(),
                 type_name = f
                     .native_type_data
@@ -417,18 +426,23 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
             };
             // This looks like `foo.clone(),` or `foo.borrowReference(),`.
             acc.1.push_str(&format!(
-                "            {}.{}(){}",
+                "{:level$}{}.{}(){}",
+                " ",
                 f.field_name.to_string(),
                 clone_or_borrow,
-                trailing_punctuation
+                trailing_punctuation,
+                level = TAB_SIZE * 3,
             ));
             // This looks like `public var foo: Bar { Bar.fromRust(get_bar_foo(pointer) }`.
             acc.2.push_str(&format!(
-                r#"
-    public var {field}: {type_name} {{
-        {type_name}.fromRust({getter}(pointer))
-    }}
-"#,
+                "
+{spacer:l1$}public var {field}: {type_name} {{
+{spacer:l2$}{type_name}.fromRust({getter}(pointer))
+{spacer:l1$}}}
+",
+                spacer = " ",
+                l1 = TAB_SIZE,
+                l2 = TAB_SIZE * 2,
                 field = f.field_name.to_string(),
                 type_name = f
                     .native_type_data

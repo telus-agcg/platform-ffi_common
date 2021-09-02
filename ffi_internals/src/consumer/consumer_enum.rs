@@ -32,7 +32,7 @@ impl ConsumerEnum {
 
     fn array_conformance(&self) -> String {
         format!(
-            r#"
+            "
 extension {}: FFIArray {{
     public typealias Value = {}
 
@@ -44,7 +44,7 @@ extension {}: FFIArray {{
         {}(array)
     }}
 }}
-"#,
+",
             self.array_name(),
             self.type_name,
             self.array_init(),
@@ -54,7 +54,7 @@ extension {}: FFIArray {{
 
     fn option_conformance(&self) -> String {
         format!(
-            r#"
+            "
 public extension Optional where Wrapped == {} {{
     func clone() -> UnsafeMutablePointer<{}>? {{
         switch self {{
@@ -89,8 +89,7 @@ public extension Optional where Wrapped == {} {{
         {}(option)
     }}
 }}
-
-"#,
+",
             self.type_name,
             self.type_name,
             self.option_init(),
@@ -106,9 +105,7 @@ public extension Optional where Wrapped == {} {{
     ///
     fn native_data_impl(&self) -> String {
         format!(
-            r#"
-{}
-
+            "
 extension {}: NativeData {{
     public typealias ForeignType = {}
 
@@ -124,12 +121,8 @@ extension {}: NativeData {{
         return foreignObject
     }}
 }}
-"#,
-            option_env!("FFI_COMMON_FRAMEWORK")
-                .map(|f| format!("import {}", f))
-                .unwrap_or_default(),
-            self.type_name,
-            self.type_name
+",
+            self.type_name, self.type_name
         )
     }
 
@@ -137,11 +130,11 @@ extension {}: NativeData {{
     ///
     fn consumer_array_type(&self) -> String {
         format!(
-            r#"
+            "
 extension {}: NativeArrayData {{
     public typealias FFIArrayType = {}
 }}
-"#,
+",
             self.type_name,
             self.array_name()
         )
@@ -151,11 +144,11 @@ extension {}: NativeArrayData {{
 impl From<ConsumerEnum> for String {
     fn from(consumer: ConsumerEnum) -> Self {
         [
-            super::HEADER,
-            &consumer.native_data_impl(),
-            &consumer.array_conformance(),
-            &consumer.consumer_array_type(),
-            &consumer.option_conformance(),
+            super::header_and_imports(&[]),
+            consumer.native_data_impl(),
+            consumer.array_conformance(),
+            consumer.consumer_array_type(),
+            consumer.option_conformance(),
         ]
         .join("")
     }

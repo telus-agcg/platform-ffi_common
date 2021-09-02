@@ -439,12 +439,8 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     });
     let out_dir = out_dir();
     let file_name = impl_ffi.consumer_file_name();
-    ffi_internals::write_consumer_file(
-        &file_name,
-        impl_ffi.generate_consumer(ffi_internals::consumer::HEADER),
-        &out_dir,
-    )
-    .unwrap_or_else(|err| abort!(item_impl.span(), "Error writing consumer file: {}", err));
+    ffi_internals::write_consumer_file(&file_name, String::from(&impl_ffi), &out_dir)
+        .unwrap_or_else(|err| abort!(item_impl.span(), "Error writing consumer file: {}", err));
     let ffi = impl_ffi.generate_ffi();
 
     let output = ffi_internals::quote::quote! {
@@ -470,17 +466,9 @@ pub fn expose_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     let file_name = [&module_name.to_string(), ".swift"].join("");
     let out_dir = out_dir();
 
-    let common_import = option_env!("FFI_COMMON_FRAMEWORK")
-        .map(|f| format!("import {}", f))
-        .unwrap_or_default();
     ffi_internals::write_consumer_file(
         &file_name,
-        fn_ffi.generate_consumer_extension(
-            ffi_internals::consumer::HEADER,
-            &fn_attributes.extend_type.to_string(),
-            &module_name,
-            Some(&common_import),
-        ),
+        fn_ffi.generate_consumer_extension(&fn_attributes.extend_type.to_string(), &module_name),
         &out_dir,
     )
     .unwrap_or_else(|err| abort!(item_fn.span(), "Error writing consumer file: {}", err));
