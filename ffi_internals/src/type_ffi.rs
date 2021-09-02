@@ -457,13 +457,21 @@ impl TypeFFI {
     /// Returns a tuple containing 1) the conversion operation to perform for this type on the
     /// consumer side, 2) a closing parenthesis, and 3) the signature for returning this type from a
     /// consumer function.
-    /// 
+    ///
     pub(crate) fn consumer_return_type_components(&self) -> (String, String, String) {
         let ty = self.consumer_type(None);
         if self.is_result {
-            ("handle(result: ".to_string(), ")".to_string(), format!("-> Result<{}, RustError>", ty))
+            (
+                "handle(result: ".to_string(),
+                ")".to_string(),
+                format!("-> Result<{}, RustError>", ty),
+            )
         } else {
-            (format!("{}.fromRust(", ty), ")".to_string(), format!("-> {}", ty))
+            (
+                format!("{}.fromRust(", ty),
+                ")".to_string(),
+                format!("-> {}", ty),
+            )
         }
     }
 }

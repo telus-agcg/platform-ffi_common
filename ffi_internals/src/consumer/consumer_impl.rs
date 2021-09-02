@@ -32,24 +32,13 @@ impl ImplFFI {
     /// segments).
     ///
     #[must_use]
-    pub fn generate_consumer(&self, header: &str) -> String {
-        let additional_imports = super::build_imports(&*self.consumer_imports).join("\n");
-
+    fn generate_consumer(&self) -> String {
         format!(
-            r#"
-    {header}
-    {common_framework}
-    {additional_imports}
-
-    public extension {native_type} {{
-    {functions}
-    }}
-            "#,
-            header = header,
-            common_framework = option_env!("FFI_COMMON_FRAMEWORK")
-                .map(|f| format!("import {}", f))
-                .unwrap_or_default(),
-            additional_imports = additional_imports,
+            "
+public extension {native_type} {{
+{functions}
+}}
+",
             native_type = self.type_name.to_string(),
             functions = self
                 .fns
@@ -58,5 +47,15 @@ impl ImplFFI {
                 .collect::<Vec<String>>()
                 .join("\n"),
         )
+    }
+}
+
+impl From<&ImplFFI> for String {
+    fn from(impl_ffi: &ImplFFI) -> Self {
+        [
+            super::header_and_imports(&*impl_ffi.consumer_imports),
+            impl_ffi.generate_consumer(),
+        ]
+        .join("")
     }
 }

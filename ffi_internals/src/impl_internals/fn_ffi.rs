@@ -96,11 +96,13 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
                             FnReceiver::Owned
                         }
                     }
-                    syn::FnArg::Typed(arg) => acc.0.push(FnParameterFFI::from( FnParameterFFIInputs{
-                        arg,
-                        raw_types: inputs.raw_types.clone(),
-                        self_type: Some(inputs.self_type.clone()),
-                    })),
+                    syn::FnArg::Typed(arg) => {
+                        acc.0.push(FnParameterFFI::from(FnParameterFFIInputs {
+                            arg,
+                            raw_types: inputs.raw_types.clone(),
+                            self_type: Some(inputs.self_type.clone()),
+                        }))
+                    }
                 }
                 acc
             },
@@ -130,7 +132,7 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
 impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
     /// Converts a tuple of `syn::ItemFn` (the function to build an FFI for) and `Vec<Ident>` (a
     /// collection of raw types that can be exposed directly) to a `FnFFI`.
-    /// 
+    ///
     /// When building an `FnFFI` for a function inside of an impl, as with
     /// `ffi_derive::expose_impl`, use `FnFFI::from(&FnFFIInputs)` instead, since `FnFFIInputs`
     /// captures additional information available in the impl that may be necessary to build the
@@ -151,8 +153,11 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
                         }
                     }
                     syn::FnArg::Typed(arg) => {
-                        acc.0
-                            .push(FnParameterFFI::from(FnParameterFFIInputs {arg, raw_types: raw_types.clone(), self_type: None}))
+                        acc.0.push(FnParameterFFI::from(FnParameterFFIInputs {
+                            arg,
+                            raw_types: raw_types.clone(),
+                            self_type: None,
+                        }))
                     }
                 }
                 acc
@@ -369,13 +374,13 @@ pub(crate) struct FnParameterFFI {
 ///
 pub struct FnParameterFFIInputs<'a> {
     /// The parameter argument, as in `foo: i32`.
-    /// 
+    ///
     arg: &'a PatType,
     /// Any types that we should expose directly through the FFI.
-    /// 
+    ///
     raw_types: Vec<Ident>,
     /// The type of `self` in this context, if available.
-    /// 
+    ///
     self_type: Option<Ident>,
 }
 
