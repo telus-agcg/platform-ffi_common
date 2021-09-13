@@ -3,7 +3,7 @@
 //! consumer implementations.
 //!
 
-use crate::struct_internals::field_ffi::FieldFFI;
+use crate::struct_internals::field_ffi::{FieldFFI, FieldIdent};
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -99,24 +99,53 @@ pub struct StructInputs<'a> {
     pub required_imports: &'a [Path],
 }
 
+use super::field_ffi::FieldInputs;
+
 impl<'a> From<&StructInputs<'a>> for StructFFI {
     fn from(derive: &StructInputs<'_>) -> Self {
         // Map the fields of the struct into initializer arguments, assignment expressions, and
         // getter functions.
         let fields: Vec<FieldFFI> = match &derive.data.fields {
-            Fields::Named(named) => named,
-            Fields::Unnamed(unnamed) => {
-                proc_macro_error::abort!(unnamed.span(), "Unnamed fields are not supported.")
-            }
+            Fields::Named(fields) => fields
+                .named
+                .iter()
+                .map(|field| {
+                    FieldFFI::from(FieldInputs {
+                        type_ident: derive.type_name.clone(),
+                        field_ident: field.ident.clone().map_or_else(
+                            || {
+                                proc_macro_error::abort!(
+                                    field.span(),
+                                    "Expected field to have an identifier."
+                                )
+                            },
+                            FieldIdent::NamedField,
+                        ),
+                        field_type: &field.ty,
+                        field_attrs: &*field.attrs,
+                        alias_modules: derive.alias_modules,
+                    })
+                })
+                .collect(),
+            Fields::Unnamed(fields) => fields
+                .unnamed
+                .iter()
+                .enumerate()
+                .map(|(index, field)| {
+                    FieldFFI::from(FieldInputs {
+                        type_ident: derive.type_name.clone(),
+                        field_ident: FieldIdent::UnnamedField(index),
+                        field_type: &field.ty,
+                        field_attrs: &*field.attrs,
+                        alias_modules: derive.alias_modules,
+                    })
+                })
+                .collect(),
             Fields::Unit => proc_macro_error::abort!(
                 derive.data.fields.span(),
                 "Unit fields are not supported."
             ),
-        }
-        .named
-        .iter()
-        .map(|field| FieldFFI::from((derive.type_name.clone(), field, &*derive.alias_modules)))
-        .collect();
+        };
 
         let (init_arguments, assignment_expressions, getter_fns) =
             fields

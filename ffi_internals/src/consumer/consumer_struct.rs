@@ -413,7 +413,7 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
                 "{spacer:level$}{field}: {type_name}{punct}",
                 spacer = " ",
                 level = TAB_SIZE * 2,
-                field = f.field_name.to_string(),
+                field = f.field_name.consumer_ident(),
                 type_name = f
                     .native_type_data
                     .consumer_type(f.attributes.expose_as_ident()),
@@ -428,7 +428,7 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
             acc.1.push_str(&format!(
                 "{:level$}{}.{}(){}",
                 " ",
-                f.field_name.to_string(),
+                f.field_name.consumer_ident(),
                 clone_or_borrow,
                 trailing_punctuation,
                 level = TAB_SIZE * 3,
@@ -443,7 +443,7 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
                 spacer = " ",
                 l1 = TAB_SIZE,
                 l2 = TAB_SIZE * 2,
-                field = f.field_name.to_string(),
+                field = f.field_name.consumer_ident(),
                 type_name = f
                     .native_type_data
                     .consumer_type(f.attributes.expose_as_ident()),

@@ -38,12 +38,12 @@ impl From<syn::AttributeArgs> for ImplAttributes {
                     if !ffi_imports.is_empty() {
                         abort!(m.span(), "Duplicate `ffi_imports` attribute defined for a single call. This attribute must be set once at most.")
                     }
-                    ffi_imports = paths
+                    ffi_imports = paths;
                 } else if m.path().is_ident("consumer_imports") {
                     if !consumer_imports.is_empty() {
                         abort!(m.span(), "Duplicate `consumer_imports` attribute defined for a single call. This attribute must be set once at most.")
                     }
-                    consumer_imports = paths
+                    consumer_imports = paths;
                 } else if m.path().is_ident("raw_types") {
                     if !raw_types.is_empty() {
                         abort!(m.span(), "Duplicate `raw_types` attribute defined for a single call. This attribute must be set once at most.")
