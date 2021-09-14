@@ -12,19 +12,33 @@ use parsing::FieldAttributes;
 use proc_macro2::TokenStream;
 use proc_macro_error::abort;
 use quote::{format_ident, quote};
-use syn::{spanned::Spanned, Ident};
+use syn::{spanned::Spanned, Fields, Ident};
+
+#[derive(Debug, Clone)]
+pub(crate) enum FieldSource<'a> {
+    Struct,
+    Enum {
+        variant_ident: &'a Ident,
+        variant_fields_len: usize,
+        other_variants: Vec<Ident>,
+    },
+}
 
 /// Represents the components of a field for generating an FFI.
 ///
 #[derive(Debug)]
-pub struct FieldFFI {
+pub struct FieldFFI<'a> {
     /// The type to which this field belongs.
     ///
-    pub type_name: Ident,
+    pub(crate) type_name: &'a Ident,
 
     /// The field for which this interface is being generated.
     ///
     pub field_name: FieldIdent,
+
+    /// The type of structure to which this field belongs (i.e. a struct or an enum).
+    ///
+    pub(crate) field_source: FieldSource<'a>,
 
     /// The type information for generating an FFI for this field.
     ///
@@ -35,25 +49,46 @@ pub struct FieldFFI {
     pub attributes: FieldAttributes,
 }
 
-impl FieldFFI {
+impl<'a> FieldFFI<'a> {
+    // #[must_use]
+    // pub(crate) const fn new(
+    //     type_name: &'a Ident,
+    //     field_name: FieldIdent,
+    //     field_source: FieldSource<'a>,
+    //     native_type_data: TypeFFI,
+    //     attributes: FieldAttributes,
+    // ) -> Self {
+    //     Self {
+    //         type_name,
+    //         field_name,
+    //         field_source,
+    //         native_type_data,
+    //         attributes,
+    //     }
+    // }
+
     /// The name of the generated getter function. This is used to generate the Rust getter
     /// function, and the body of the consumer's getter, which ensures that they're properly linked.
     ///
     #[must_use]
     pub fn getter_name(&self) -> Ident {
+        let mut getter_name = "get_".to_string();
         if self.native_type_data.is_option {
-            format_ident!(
-                "get_optional_{}_{}",
-                self.type_name.to_string().to_snake_case(),
-                self.field_name.ffi_ident().to_string().to_snake_case()
-            )
-        } else {
-            format_ident!(
-                "get_{}_{}",
-                self.type_name.to_string().to_snake_case(),
-                self.field_name.ffi_ident().to_string().to_snake_case()
-            )
+            getter_name.push_str("optional_");
         }
+        getter_name.push_str(&self.type_name.to_string().to_snake_case());
+        getter_name.push('_');
+        if let FieldSource::Enum {
+            variant_ident,
+            variant_fields_len: _,
+            other_variants: _,
+        } = &self.field_source
+        {
+            getter_name.push_str(&variant_ident.to_string().to_snake_case());
+            getter_name.push('_');
+        }
+        getter_name.push_str(&self.field_name.ffi_ident().to_string().to_snake_case());
+        format_ident!("{}", getter_name)
     }
 
     /// An extern "C" function for returning the value of this field through the FFI. This takes a
@@ -62,26 +97,79 @@ impl FieldFFI {
     ///
     #[must_use]
     pub fn getter_fn(&self) -> TokenStream {
-        let field_name = &self.field_name.rust_token();
-        let type_name = &self.type_name;
-        let getter_name = &self.getter_name();
-        let ffi_type = &self
+        let type_name = self.type_name;
+        let getter_name = self.getter_name();
+        let ffi_type = self
             .native_type_data
             .ffi_type(self.attributes.expose_as_ident(), Context::Return);
-        let accessor = quote!(data.#field_name);
-        let conversion = self
-            .native_type_data
-            .rust_to_ffi_value(&accessor, &self.attributes);
+        match &self.field_source {
+            FieldSource::Struct => {
+                let field_name = &self.field_name.rust_token();
+                let ffi_type = &self
+                    .native_type_data
+                    .ffi_type(self.attributes.expose_as_ident(), Context::Return);
+                let accessor = quote!(data.#field_name);
+                let conversion = self
+                    .native_type_data
+                    .rust_to_ffi_value(&accessor, &self.attributes);
 
-        quote! {
-            ffi_common::core::paste! {
-                #[no_mangle]
-                #[doc = "Get `" #field_name "` for this `" #type_name"`."]
-                pub unsafe extern "C" fn #getter_name(
-                    ptr: *const #type_name
-                ) -> #ffi_type {
-                    let data = &*ptr;
-                    #conversion
+                quote! {
+                    ffi_common::core::paste! {
+                        #[no_mangle]
+                        #[doc = "Get `" #field_name "` for this `" #type_name"`."]
+                        pub unsafe extern "C" fn #getter_name(
+                            ptr: *const #type_name
+                        ) -> #ffi_type {
+                            let data = &*ptr;
+                            #conversion
+                        }
+                    }
+                }
+            }
+            FieldSource::Enum {
+                variant_ident,
+                variant_fields_len,
+                other_variants,
+            } => {
+                if other_variants.iter().any(|v| &v == variant_ident) {
+                    proc_macro_error::abort!(
+                        self.type_name.span(),
+                        "Internal error: `other_variants` contains `variant`"
+                    );
+                }
+                let accessor = quote!(data);
+                let conversion = self
+                    .native_type_data
+                    .rust_to_ffi_value(&accessor, &self.attributes);
+
+                let valid_arm = quote!(#type_name::#variant_ident(#accessor) => #conversion,);
+
+                let invalid_arms = other_variants
+                    .iter()
+                    .fold(quote!(), |mut acc, variant| {
+                        let variant_ident = &variant;
+                        let argument = if *variant_fields_len == 0 {
+                            quote!()
+                        } else {
+                            let field_placeholders = vec![quote!(_); *variant_fields_len];
+                            quote!((#(#field_placeholders),*))
+                        };
+                        acc.extend(quote!(#type_name::#variant_ident#argument => unreachable!("This arm is unreachable."),));
+                        acc
+                    });
+
+                quote! {
+                    ffi_common::core::paste! {
+                        #[no_mangle]
+                        pub unsafe extern "C" fn #getter_name(
+                            ptr: *const #type_name
+                        ) -> #ffi_type {
+                            match &*ptr {
+                                #valid_arm
+                                #invalid_arms
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -103,12 +191,21 @@ impl FieldFFI {
     /// included).
     #[must_use]
     pub fn assignment_expression(&self) -> TokenStream {
-        let field_name = &self.field_name.rust_token();
         let ffi_ident = &self.field_name.ffi_ident();
         let conversion = self
             .native_type_data
             .argument_into_rust(&quote!(#ffi_ident), self.attributes.expose_as.is_some());
-        quote!(#field_name: #conversion,)
+        match &self.field_source {
+            FieldSource::Struct => {
+                let field_name = &self.field_name.rust_token();
+                quote!(#field_name: #conversion,)
+            }
+            FieldSource::Enum {
+                variant_ident: _,
+                variant_fields_len: _,
+                other_variants: _,
+            } => quote!(#conversion,),
+        }
     }
 }
 
@@ -166,15 +263,104 @@ impl FieldIdent {
 }
 
 pub(super) struct FieldInputs<'a> {
-    pub type_ident: Ident,
+    pub type_ident: &'a Ident,
     pub field_ident: FieldIdent,
     pub field_type: &'a syn::Type,
+    pub field_source: FieldSource<'a>,
     pub field_attrs: &'a [syn::Attribute],
     pub alias_modules: &'a [String],
 }
 
-impl<'a> From<FieldInputs<'_>> for FieldFFI {
-    fn from(inputs: FieldInputs<'_>) -> Self {
+#[must_use]
+pub(super) fn field_inputs_from_unnamed_fields<'a>(
+    fields: &'a syn::FieldsUnnamed,
+    field_source: &FieldSource<'a>,
+    type_name: &'a Ident,
+    alias_modules: &'a [String],
+) -> Vec<FieldInputs<'a>> {
+    fields
+        .unnamed
+        .iter()
+        .enumerate()
+        .map(|(index, field)| FieldInputs {
+            type_ident: type_name,
+            field_ident: FieldIdent::UnnamedField(index),
+            field_type: &field.ty,
+            field_source: field_source.clone(),
+            field_attrs: &*field.attrs,
+            alias_modules,
+        })
+        .collect()
+}
+
+#[must_use]
+pub(super) fn field_inputs_from_named_fields<'a>(
+    fields: &'a syn::FieldsNamed,
+    field_source: &FieldSource<'a>,
+    type_name: &'a Ident,
+    alias_modules: &'a [String],
+) -> Vec<FieldInputs<'a>> {
+    fields
+        .named
+        .iter()
+        .map(|field| {
+            let field_ident = field.ident.as_ref().unwrap_or_else(|| {
+                proc_macro_error::abort!(field.span(), "Expected field to have an identifier.")
+            });
+            FieldInputs {
+                type_ident: type_name,
+                field_ident: FieldIdent::NamedField(field_ident.clone()),
+                field_type: &field.ty,
+                field_source: field_source.clone(),
+                field_attrs: &*field.attrs,
+                alias_modules,
+            }
+        })
+        .collect()
+}
+
+/// Builds a `Vec` of `FieldFFI` for the fields of an enum variant.
+///
+#[must_use]
+pub fn fields_for_variant<'a>(
+    type_name: &'a Ident,
+    alias_modules: &'a [String],
+    variant_ident: &'a Ident,
+    variant_fields: &'a Fields,
+    other_variants: Vec<Ident>,
+) -> Vec<FieldFFI<'a>> {
+    match &variant_fields {
+        Fields::Named(fields) => field_inputs_from_named_fields(
+            fields,
+            &FieldSource::Enum {
+                variant_ident,
+                variant_fields_len: fields.named.len(),
+                other_variants,
+            },
+            type_name,
+            alias_modules,
+        ),
+        Fields::Unnamed(fields) => field_inputs_from_unnamed_fields(
+            fields,
+            &FieldSource::Enum {
+                variant_ident,
+                variant_fields_len: fields.unnamed.len(),
+                other_variants,
+            },
+            type_name,
+            alias_modules,
+        ),
+        Fields::Unit => {
+            return Vec::new();
+        }
+    }
+    .into_iter()
+    .map(FieldFFI::from)
+    .collect()
+}
+
+impl<'a> From<FieldInputs<'a>> for FieldFFI<'a> {
+    fn from(inputs: FieldInputs<'a>) -> Self {
         let attributes = FieldAttributes::from(inputs.field_attrs);
         let (wrapping_type, unaliased_field_type) =
             match parsing::get_segment_for_field(inputs.field_type) {
@@ -209,6 +395,7 @@ impl<'a> From<FieldInputs<'_>> for FieldFFI {
         Self {
             type_name: inputs.type_ident,
             field_name: inputs.field_ident,
+            field_source: inputs.field_source,
             native_type_data,
             attributes,
         }

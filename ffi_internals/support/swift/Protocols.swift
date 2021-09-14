@@ -84,3 +84,19 @@ public extension Collection where Element: NativeArrayData, Element.FFIArrayType
         return nativeArray
     }
 }
+
+// MARK: - Enum protocols
+/// This describes the behaviors needed for a Rust representation of a non-reprc enum.
+public protocol ForeignEnum: NativeData {
+    associatedtype NativeEnumType: NativeEnum
+
+    func makeNative() -> NativeEnumType
+}
+
+/// This describes the behaviors needed for a Swift representation of a non-reprc enum.
+public protocol NativeEnum {
+    associatedtype FFIType: ForeignEnum
+
+    var ffi: FFIType { get }
+    static func fromRust(pointer: FFIType.ForeignType) -> Self
+}

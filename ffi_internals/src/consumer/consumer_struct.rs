@@ -5,14 +5,13 @@
 //!
 
 use crate::{
+    consumer::ConsumerType,
     heck::MixedCase,
     parsing::CustomAttributes,
     struct_internals::{field_ffi::FieldFFI, struct_ffi::StructFFI},
     syn::{Ident, Path, Type},
     type_ffi::TypeFFI,
 };
-
-const TAB_SIZE: usize = 4;
 
 /// Contains the data required to generate a consumer type, and associated functions for doing so.
 ///
@@ -61,6 +60,48 @@ impl ConsumerStruct {
         format!("ffi_array_{}_free", self.type_name)
     }
 
+    fn init_impl(&self) -> String {
+        if self.failable_init {
+            format!(
+                "{spacer:l1$}internal init?(
+{args}
+{spacer:l1$}) {{
+{spacer:l2$}guard let pointer = {ffi_init}(
+{ffi_args}
+{spacer:l2$}) else {{
+{spacer:l3$}return nil
+{spacer:l2$}}}
+{spacer:l2$}self.pointer = pointer
+{spacer:l1$}}}",
+                spacer = " ",
+                l1 = super::TAB_SIZE,
+                l2 = super::TAB_SIZE * 2,
+                l3 = super::TAB_SIZE * 3,
+                args = self.consumer_init_args,
+                ffi_init = self.init_fn_name,
+                ffi_args = self.ffi_init_args,
+            )
+        } else {
+            format!(
+                "{spacer:l1$}public init(
+{args}
+{spacer:l1$}) {{
+{spacer:l2$}self.pointer = {ffi_init}(
+{ffi_args}
+{spacer:l2$})
+{spacer:l1$}}}",
+                spacer = " ",
+                l1 = super::TAB_SIZE,
+                l2 = super::TAB_SIZE * 2,
+                args = self.consumer_init_args,
+                ffi_init = self.init_fn_name,
+                ffi_args = self.ffi_init_args,
+            )
+        }
+    }
+}
+
+impl ConsumerType for ConsumerStruct {
     /// Generates a wrapper for a struct so that the native interface in the consumer's language
     /// correctly wraps the generated FFI module.
     ///
@@ -73,7 +114,7 @@ public final class {class} {{
 
 {init_impl}
 
-    private init(_ pointer: OpaquePointer) {{
+    internal init(_ pointer: OpaquePointer) {{
         self.pointer = pointer
     }}
 
@@ -175,7 +216,7 @@ public extension Optional where Wrapped == {} {{
         )
     }
 
-    fn array_impl(&self) -> String {
+    fn native_array_data_impl(&self) -> String {
         format!(
             "
 extension {}: NativeArrayData {{
@@ -187,44 +228,8 @@ extension {}: NativeArrayData {{
         )
     }
 
-    fn init_impl(&self) -> String {
-        if self.failable_init {
-            format!(
-                "{spacer:l1$}internal init?(
-{args}
-{spacer:l1$}) {{
-{spacer:l2$}guard let pointer = {ffi_init}(
-{ffi_args}
-{spacer:l2$}) else {{
-{spacer:l3$}return nil
-{spacer:l2$}}}
-{spacer:l2$}self.pointer = pointer
-{spacer:l1$}}}",
-                spacer = " ",
-                l1 = TAB_SIZE,
-                l2 = TAB_SIZE * 2,
-                l3 = TAB_SIZE * 3,
-                args = self.consumer_init_args,
-                ffi_init = self.init_fn_name,
-                ffi_args = self.ffi_init_args,
-            )
-        } else {
-            format!(
-                "{spacer:l1$}public init(
-{args}
-{spacer:l1$}) {{
-{spacer:l2$}self.pointer = {ffi_init}(
-{ffi_args}
-{spacer:l2$})
-{spacer:l1$}}}",
-                spacer = " ",
-                l1 = TAB_SIZE,
-                l2 = TAB_SIZE * 2,
-                args = self.consumer_init_args,
-                ffi_init = self.init_fn_name,
-                ffi_args = self.ffi_init_args,
-            )
-        }
+    fn required_imports(&self) -> &[Path] {
+        &*self.required_imports
     }
 }
 
@@ -281,7 +286,7 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
                     arg_ident_string,
                     consumer_type,
                     trailing_punctuation,
-                    indent_level = TAB_SIZE * 2,
+                    indent_level = super::TAB_SIZE * 2,
                 ));
                 // It's worth noting here that we always clone when calling an initializer -- the
                 // new Rust instance needs to take ownership of the data because it will be owned by
@@ -293,7 +298,7 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
                     " ",
                     arg_ident_string,
                     trailing_punctuation,
-                    indent_level = TAB_SIZE * 3,
+                    indent_level = super::TAB_SIZE * 3,
                 ));
                 acc
             },
@@ -339,8 +344,8 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
 {spacer:l1$}}}
 ",
                         spacer = " ",
-                        l1 = TAB_SIZE,
-                        l2 = TAB_SIZE * 2,
+                        l1 = super::TAB_SIZE,
+                        l2 = super::TAB_SIZE * 2,
                         access_modifier = access_modifier,
                         consumer_getter_name = consumer_getter_name,
                         consumer_type = consumer_type,
@@ -363,8 +368,8 @@ impl<'a> From<CustomConsumerStructInputs<'a>> for ConsumerStruct {
     }
 }
 
-impl From<&StructFFI> for ConsumerStruct {
-    fn from(struct_ffi: &StructFFI) -> Self {
+impl<'a> From<&StructFFI<'_>> for ConsumerStruct {
+    fn from(struct_ffi: &StructFFI<'_>) -> Self {
         let (consumer_init_args, ffi_init_args, consumer_getters) =
             expand_fields(&*struct_ffi.fields);
         Self {
@@ -381,24 +386,10 @@ impl From<&StructFFI> for ConsumerStruct {
     }
 }
 
-impl From<&ConsumerStruct> for String {
-    fn from(consumer: &ConsumerStruct) -> Self {
-        [
-            super::header_and_imports(&*consumer.required_imports),
-            consumer.type_definition(),
-            consumer.ffi_array_impl(),
-            consumer.native_data_impl(),
-            consumer.option_impl(),
-            consumer.array_impl(),
-        ]
-        .join("")
-    }
-}
-
 /// Expands a `&[FieldFFI]` to a tuple of consumer initializer arguments, FFI initializer
 /// arguments, and consumer getters for accessing the Rust fields.
 ///
-fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
+fn expand_fields(fields_ffi: &[FieldFFI<'_>]) -> (String, String, String) {
     fields_ffi.iter().enumerate().fold(
         (String::new(), String::new(), String::new()),
         |mut acc, (index, f)| {
@@ -412,7 +403,7 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
             acc.0.push_str(&format!(
                 "{spacer:level$}{field}: {type_name}{punct}",
                 spacer = " ",
-                level = TAB_SIZE * 2,
+                level = super::TAB_SIZE * 2,
                 field = f.field_name.consumer_ident(),
                 type_name = f
                     .native_type_data
@@ -431,7 +422,7 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
                 f.field_name.consumer_ident(),
                 clone_or_borrow,
                 trailing_punctuation,
-                level = TAB_SIZE * 3,
+                level = super::TAB_SIZE * 3,
             ));
             // This looks like `public var foo: Bar { Bar.fromRust(get_bar_foo(pointer) }`.
             acc.2.push_str(&format!(
@@ -441,8 +432,8 @@ fn expand_fields(fields_ffi: &[FieldFFI]) -> (String, String, String) {
 {spacer:l1$}}}
 ",
                 spacer = " ",
-                l1 = TAB_SIZE,
-                l2 = TAB_SIZE * 2,
+                l1 = super::TAB_SIZE,
+                l2 = super::TAB_SIZE * 2,
                 field = f.field_name.consumer_ident(),
                 type_name = f
                     .native_type_data

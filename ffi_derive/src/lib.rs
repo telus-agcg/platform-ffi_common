@@ -358,13 +358,21 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
                 )
             },
         ),
-        Data::Enum(_) => {
-            if !parsing::is_repr_c(&ast.attrs) {
-                abort!(ast.span(), "Non-repr(C) enums are not supported.");
+        Data::Enum(data) => {
+            if parsing::is_repr_c(&ast.attrs) {
+                enum_ffi::reprc(&module_name, &type_name, &out_dir)
+            } else {
+                enum_ffi::complex(
+                    &module_name,
+                    &type_name,
+                    data,
+                    &*struct_attributes.alias_modules,
+                    &*struct_attributes.required_imports,
+                    &out_dir,
+                )
             }
-            enum_ffi::build(&module_name, &type_name, &out_dir)
         }
-        Data::Union(_) => abort!(ast.span(), "Unions are not supported"),
+        Data::Union(_) => abort!(type_name.span(), "Unions are not supported"),
     }
     .into()
 }
