@@ -128,7 +128,7 @@ impl TypeFFI {
     #[must_use]
     pub fn argument_into_rust(
         &self,
-        field_name: &Ident,
+        field_name: &TokenStream,
         has_custom_implementation: bool,
     ) -> TokenStream {
         // All FFIArrayT types have a `From<FFIArrayT> for Vec<T>` impl, so we can treat them all
@@ -257,7 +257,7 @@ impl TypeFFI {
                         // If this field is exposed as a different type for FFI, convert it back to
                         // the native type.
                         if attributes.expose_as.is_some() {
-                            return_value = quote!(#return_value.into())
+                            return_value = quote!(#return_value.into());
                         }
                         quote!(
                             #accessor.as_ref().map_or(ptr::null(), |f| {
@@ -269,7 +269,7 @@ impl TypeFFI {
                         // If this field is exposed as a different type for FFI, convert it back to
                         // the native type.
                         if attributes.expose_as.is_some() {
-                            return_value = quote!(#return_value.into())
+                            return_value = quote!(#return_value.into());
                         }
                         quote!(Box::into_raw(Box::new(#return_value)))
                     }
@@ -415,11 +415,11 @@ impl TypeFFI {
         );
 
         if self.is_vec {
-            t = format!("[{}]", t)
+            t = format!("[{}]", t);
         }
 
         if self.is_option {
-            t = format!("{}?", t)
+            t = format!("{}?", t);
         }
 
         t

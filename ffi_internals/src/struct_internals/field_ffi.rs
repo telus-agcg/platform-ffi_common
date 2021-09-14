@@ -12,7 +12,7 @@ use parsing::FieldAttributes;
 use proc_macro2::TokenStream;
 use proc_macro_error::abort;
 use quote::{format_ident, quote};
-use syn::{spanned::Spanned, Field, Ident};
+use syn::{spanned::Spanned, Ident};
 
 /// Represents the components of a field for generating an FFI.
 ///
@@ -24,7 +24,7 @@ pub struct FieldFFI {
 
     /// The field for which this interface is being generated.
     ///
-    pub field_name: Ident,
+    pub field_name: FieldIdent,
 
     /// The type information for generating an FFI for this field.
     ///
@@ -45,13 +45,13 @@ impl FieldFFI {
             format_ident!(
                 "get_optional_{}_{}",
                 self.type_name.to_string().to_snake_case(),
-                self.field_name.to_string().to_snake_case()
+                self.field_name.ffi_ident().to_string().to_snake_case()
             )
         } else {
             format_ident!(
                 "get_{}_{}",
                 self.type_name.to_string().to_snake_case(),
-                self.field_name.to_string().to_snake_case()
+                self.field_name.ffi_ident().to_string().to_snake_case()
             )
         }
     }
@@ -62,7 +62,7 @@ impl FieldFFI {
     ///
     #[must_use]
     pub fn getter_fn(&self) -> TokenStream {
-        let field_name = &self.field_name;
+        let field_name = &self.field_name.rust_token();
         let type_name = &self.type_name;
         let getter_name = &self.getter_name();
         let ffi_type = &self
@@ -92,7 +92,7 @@ impl FieldFFI {
     ///
     #[must_use]
     pub fn ffi_initializer_argument(&self) -> TokenStream {
-        let field_name = &self.field_name;
+        let field_name = &self.field_name.ffi_ident();
         let ffi_type = &self
             .native_type_data
             .ffi_type(self.attributes.expose_as_ident(), Context::Argument);
@@ -103,40 +103,99 @@ impl FieldFFI {
     /// included).
     #[must_use]
     pub fn assignment_expression(&self) -> TokenStream {
-        let field_name = &self.field_name;
+        let field_name = &self.field_name.rust_token();
+        let ffi_ident = &self.field_name.ffi_ident();
         let conversion = self
             .native_type_data
-            .argument_into_rust(&self.field_name, self.attributes.expose_as.is_some());
+            .argument_into_rust(&quote!(#ffi_ident), self.attributes.expose_as.is_some());
         quote!(#field_name: #conversion,)
     }
 }
 
-impl From<(Ident, &Field, &[String])> for FieldFFI {
-    fn from(inputs: (Ident, &Field, &[String])) -> Self {
-        let (type_name, field, alias_modules) = inputs;
-        let field_name = field
-            .ident
-            .as_ref()
-            .unwrap_or_else(|| abort!(field.span(), "Expected field to have an identifier."))
-            .clone();
-        let attributes = FieldAttributes::from(&*field.attrs);
-        let (wrapping_type, unaliased_field_type) = match parsing::get_segment_for_field(&field.ty)
-        {
-            Some(segment) => {
-                let (ident, wrapping_type) =
-                    parsing::separate_wrapping_type_from_inner_type(segment);
-                (
-                    wrapping_type,
-                    alias_resolution::resolve_type_alias(&ident, alias_modules, None)
-                        .unwrap_or_else(|err| {
-                            abort!(field.span(), "Alias resolution error: {}", err)
-                        }),
-                )
+/// The type of field identifier, which may be identified by the field's name, or, in the case of a
+/// tuple struct, its index.
+///
+#[derive(Debug, Clone)]
+#[allow(variant_size_differences)]
+pub enum FieldIdent {
+    /// A named field like `bar` in  `struct Foo { bar: Baz }`. This variant contains the field's
+    /// identifier.
+    ///
+    NamedField(Ident),
+    /// An unnamed field in a tuple struct like `struct Foo(Bar)`. This variant contains the field's
+    /// index.
+    ///
+    UnnamedField(usize),
+}
+
+impl FieldIdent {
+    /// Returns the Rust identifier for accessing this field. (Note that this is a `TokenStream`
+    /// rather than an `Ident` because `0` is not a valid `Ident`.)
+    ///
+    #[must_use]
+    fn rust_token(&self) -> TokenStream {
+        match self {
+            FieldIdent::NamedField(ident) => quote!(#ident),
+            FieldIdent::UnnamedField(index) => {
+                let index = syn::Index::from(index.to_owned());
+                quote!(#index)
             }
-            None => {
-                abort!(field.ty.span(), "No path segment (field without a type?")
-            }
-        };
+        }
+    }
+
+    /// Returns the FFI identifier for accessing this field. In the case of a
+    /// `FieldIdent::NamedField`, this will simply be the field's name. In the case of a
+    /// `FieldIdent::UnnamedField`, we can't just use an index like `0` to reference it, so we
+    /// construct an identifier like `unnamed_field_0`.
+    ///
+    #[must_use]
+    fn ffi_ident(&self) -> Ident {
+        match self {
+            FieldIdent::NamedField(ident) => ident.clone(),
+            FieldIdent::UnnamedField(index) => quote::format_ident!("unnamed_field_{}", index),
+        }
+    }
+
+    /// Returns the consumer identifier for accessing this field. The consumer must be able to call
+    /// the FFI using matching identifiers, so this is just `ffi_ident()` converted to a `String`.
+    ///
+    #[must_use]
+    pub(crate) fn consumer_ident(&self) -> String {
+        self.ffi_ident().to_string()
+    }
+}
+
+pub(super) struct FieldInputs<'a> {
+    pub type_ident: Ident,
+    pub field_ident: FieldIdent,
+    pub field_type: &'a syn::Type,
+    pub field_attrs: &'a [syn::Attribute],
+    pub alias_modules: &'a [String],
+}
+
+impl<'a> From<FieldInputs<'_>> for FieldFFI {
+    fn from(inputs: FieldInputs<'_>) -> Self {
+        let attributes = FieldAttributes::from(inputs.field_attrs);
+        let (wrapping_type, unaliased_field_type) =
+            match parsing::get_segment_for_field(inputs.field_type) {
+                Some(segment) => {
+                    let (ident, wrapping_type) =
+                        parsing::separate_wrapping_type_from_inner_type(segment);
+                    (
+                        wrapping_type,
+                        alias_resolution::resolve_type_alias(&ident, inputs.alias_modules, None)
+                            .unwrap_or_else(|err| {
+                                abort!(&inputs.field_type.span(), "Alias resolution error: {}", err)
+                            }),
+                    )
+                }
+                None => {
+                    abort!(
+                        inputs.field_type.span(),
+                        "No path segment (field without a type?"
+                    )
+                }
+            };
 
         // If this has a raw attribute, bypass the normal `NativeType` logic and use `NativeType::raw`.
         let field_type = if attributes.raw {
@@ -148,8 +207,8 @@ impl From<(Ident, &Field, &[String])> for FieldFFI {
         let native_type_data = TypeFFI::from((field_type, wrapping_type));
 
         Self {
-            type_name,
-            field_name,
+            type_name: inputs.type_ident,
+            field_name: inputs.field_ident,
             native_type_data,
             attributes,
         }

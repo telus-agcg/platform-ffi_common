@@ -101,7 +101,7 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
                             arg,
                             raw_types: inputs.raw_types.clone(),
                             self_type: Some(inputs.self_type.clone()),
-                        }))
+                        }));
                     }
                 }
                 acc
@@ -157,7 +157,7 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
                             arg,
                             raw_types: raw_types.clone(),
                             self_type: None,
-                        }))
+                        }));
                     }
                 }
                 acc
@@ -250,7 +250,9 @@ impl FnFFI {
                 let calling_arg = quote!(#symbols#name, );
 
                 let native_type = arg.native_type_data.native_type();
-                let conversion = arg.native_type_data.argument_into_rust(&name, false);
+                let conversion = arg
+                    .native_type_data
+                    .argument_into_rust(&quote!(#name), false);
                 let conversion = if arg.native_type_data.is_borrow
                     && arg.native_type_data.native_type == TypeIdentifier::String
                 {
