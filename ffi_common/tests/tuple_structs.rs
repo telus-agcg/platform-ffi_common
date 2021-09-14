@@ -1,6 +1,6 @@
 #[derive(Debug, Clone, ffi_common::derive::FFI)]
 pub struct SomeType {
-    bar: u8,
+    value: u8,
 }
 
 #[derive(Debug, Clone, ffi_common::derive::FFI)]
@@ -17,7 +17,7 @@ fn access_wrapper_ffo() {
         let wrapper = wrapper_ffi::wrapper_init(input1, input2);
         let output1 = wrapper_ffi::get_wrapper_unnamed_field_0(wrapper);
         let output2 = wrapper_ffi::get_wrapper_unnamed_field_1(wrapper);
-        assert_eq!(value1, (*output1).bar);
-        assert_eq!(value2, (*output2).bar);
+        assert_eq!(value1, (*output1).value);
+        assert_eq!(value2, (*output2).value);
     }
 }
