@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2021-09-22
+
+### Added
+
+- Add support for `Option` and `Result` return types.
+- Add support for borrowed parameters.
+- Add `ffi_derive::expose_fn` for exposing a single function (as opposed to a whole impl with
+  `ffi_derive::expose_impl`).
+
+### Changed
+
+- Replace panics with `proc_macro_error` calls.
+
+### Removed
+
+- Remove `ffi_consumer` crate. This functionality is now provided by `ffi_internals::consumer`.
+
 ## [0.4.1] - 2021-08-11
 
 ### Changed
