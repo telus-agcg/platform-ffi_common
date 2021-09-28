@@ -45,21 +45,21 @@ impl StructFFI {
     ///
     #[must_use]
     pub fn init_fn_name(&self) -> Ident {
-        format_ident!("{}_init", self.name.to_string().to_snake_case())
+        format_ident!("{}_rust_ffi_init", self.name.to_string().to_snake_case())
     }
 
     /// The name of the free function for this struct.
     ///
     #[must_use]
     pub fn free_fn_name(&self) -> Ident {
-        format_ident!("{}_free", self.name.to_string().to_snake_case())
+        format_ident!("{}_rust_ffi_free", self.name.to_string().to_snake_case())
     }
 
     /// The name of the clone function for this struct.
     ///
     #[must_use]
     pub fn clone_fn_name(&self) -> Ident {
-        format_ident!("clone_{}", self.name.to_string().to_snake_case())
+        format_ident!("rust_ffi_clone_{}", self.name.to_string().to_snake_case())
     }
 
     /// Find any extra imports from `expose_as` attributes on this struct's fields, and return them
