@@ -79,6 +79,10 @@ pub struct FFIArrayString {
 /// boundary. We assume that all instances of `FFIArrayString` are allocated by Rust, as this allows
 /// us to greatly simplify memory management.
 ///
+/// # Panics
+///
+/// This will panic if, for any element in `ptr`, we cannot convert a `CStr` to a `str`.
+///
 #[must_use]
 #[no_mangle]
 pub unsafe extern "C" fn ffi_array_string_init(
@@ -217,15 +221,13 @@ impl From<FFIArrayString> for Option<Vec<Uuid>> {
 /// `Option<Vec<T>>`.
 ///
 #[no_mangle]
-pub extern "C" fn ffi_array_string_free(array: FFIArrayString) {
+pub unsafe extern "C" fn ffi_array_string_free(array: FFIArrayString) {
     if array.ptr.is_null() {
         return;
     }
-    unsafe {
-        let v = Vec::from_raw_parts(array.ptr as *mut *const c_char, array.len, array.cap);
-        for s in v {
-            free_rust_string(s);
-        }
+    let v = Vec::from_raw_parts(array.ptr as *mut *const c_char, array.len, array.cap);
+    for s in v {
+        free_rust_string(s);
     }
 }
 
@@ -247,16 +249,28 @@ macro_rules! ffi_string {
 
 /// Converts an FFI string (a `*const c_char`) to a `Uuid`.
 ///
+/// # Safety
+///
+/// `ptr` is unchecked and will be dereferenced, so it must not be null.
+///
+/// # Panics
+///
+/// This will panic if we cannot parse the string at `ptr` as a `Uuid`.
+///
 #[must_use]
-pub fn uuid_from_c(ptr: *const c_char) -> Uuid {
-    unsafe { Uuid::parse_str(&CStr::from_ptr(ptr).to_string_lossy()).unwrap() }
+pub unsafe fn uuid_from_c(ptr: *const c_char) -> Uuid {
+    Uuid::parse_str(&CStr::from_ptr(ptr).to_string_lossy()).unwrap()
 }
 
 /// Converts an FFI string (a `*const c_char`) to a `String`.
 ///
+/// # Safety
+///
+/// `ptr` is unchecked and will be dereferenced, so it must not be null.
+///
 #[must_use]
-pub fn string_from_c(ptr: *const c_char) -> String {
-    unsafe { CStr::from_ptr(ptr).to_string_lossy().into_owned() }
+pub unsafe fn string_from_c(ptr: *const c_char) -> String {
+    CStr::from_ptr(ptr).to_string_lossy().into_owned()
 }
 
 /// Free a string that was created in Rust.
@@ -267,16 +281,19 @@ pub fn string_from_c(ptr: *const c_char) -> String {
 ///
 /// # Safety
 ///
-/// You **must not** use the pointer after passing it to `free_rust_string`.
+/// We assume that the memory behind `string` was allocated by Rust. Don't call this with an object
+/// created on the other side of the FFI boundary; that is undefined behavior.
+///
+/// You **must not** access `string` after passing it to this method.
+///
+/// It's safe to call this with a null pointer.
 ///
 #[no_mangle]
-pub extern "C" fn free_rust_string(string: *const c_char) {
-    unsafe {
-        if string.is_null() {
-            return;
-        }
-        let _ = CString::from_raw(string as *mut c_char);
-    };
+pub unsafe extern "C" fn free_rust_string(string: *const c_char) {
+    if string.is_null() {
+        return;
+    }
+    drop(CString::from_raw(string as *mut c_char));
 }
 
 #[cfg(test)]

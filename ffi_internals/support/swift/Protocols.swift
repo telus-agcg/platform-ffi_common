@@ -22,7 +22,8 @@ public protocol NativeData {
     associatedtype ForeignType
 
     // Base type
-    func toRust() -> ForeignType
+    func clone() -> ForeignType
+    func borrowReference() -> ForeignType
     static func fromRust(_ foreignObject: ForeignType) -> Self
 }
 
@@ -32,7 +33,7 @@ public protocol NativeArrayData: NativeData {
 
 public extension NativeArrayData where FFIArrayType.Value == ForeignType {
     static func ffiArrayInit<T: Collection>(_ collection: T) -> FFIArrayType where T.Element == Self {
-        let ffiArray = collection.map { $0.toRust() }
+        let ffiArray = collection.map { $0.clone() }
         let len = ffiArray.count
         return ffiArray.withUnsafeBufferPointer { FFIArrayType.from(ptr: $0.baseAddress, len: len) }
     }
@@ -43,17 +44,17 @@ public extension NativeArrayData where FFIArrayType.Value == ForeignType {
 }
 
 /// This lets us do `[NativeFoo]?.fromRust(instanceOfFFIArrayFooThatMightBeNil)` and 
-/// `[instanceOfNativeFooThatMightBeNil]?.toRust()` whenever `NativeFoo` is `FFIArray` and
+/// `[instanceOfNativeFooThatMightBeNil]?.clone()` whenever `NativeFoo` is `FFIArray` and
 /// `FFIArrayFoo` is `FFIArray` (both of which are trivial to generate for pretty much any type).
 public extension Optional where
     Wrapped: Collection,
     Wrapped.Element: NativeArrayData,
     Wrapped.Element.FFIArrayType.Value == Wrapped.Element.ForeignType
 {
-    func toRust() -> Wrapped.Element.FFIArrayType {
+    func clone() -> Wrapped.Element.FFIArrayType {
         switch self {
         case let .some(wrapped):
-            return wrapped.toRust()
+            return wrapped.clone()
         case .none:
             return Wrapped.Element.FFIArrayType.from(ptr: nil, len: 0)
         }
@@ -66,10 +67,10 @@ public extension Optional where
 }
 
 /// This lets us do `[NativeFoo].fromRust(instanceOfFFIArrayFoo)` and 
-/// `[instanceOfNativeFoo].toRust()` whenever `NativeFoo` is `FFIArray` and `FFIArrayFoo` is
+/// `[instanceOfNativeFoo].clone()` whenever `NativeFoo` is `FFIArray` and `FFIArrayFoo` is
 /// `FFIArray` (both of which are trivial to generate for pretty much any type).
 public extension Collection where Element: NativeArrayData, Element.FFIArrayType.Value == Element.ForeignType {
-    func toRust() -> Element.FFIArrayType {
+    func clone() -> Element.FFIArrayType {
         Element.ffiArrayInit(self)
     }
 

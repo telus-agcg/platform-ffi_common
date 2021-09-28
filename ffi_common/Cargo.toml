@@ -1,19 +1,20 @@
 [package]
 name = "ffi_common"
-version = "0.4.1"
+version = "0.5.0"
 authors = ["Nicholas Smillie <nicholas@agrian.com>"]
 edition = "2018"
 publish = ["agrian-registry"]
 repository = "https://github.com/agrian-inc/ffi_common"
 
 [dependencies]
-ffi_consumer = { version = "0.4.1", registry = "agrian-registry" }
-ffi_core = { version = "0.4.1", registry = "agrian-registry" }
-ffi_derive = { version = "0.4.1", registry = "agrian-registry" }
+ffi_core = { version = "0.5.0", registry = "agrian-registry" }
+ffi_derive = { version = "0.5.0", registry = "agrian-registry" }
+ffi_internals = { version = "0.5.0", registry = "agrian-registry" }
 
 [lib]
 crate-type = ["staticlib", "rlib"]
 
 [dev-dependencies]
+approx = "0.5"
 chrono = "0.4"
 uuid = { version = "0.8", features = ["v4"] }

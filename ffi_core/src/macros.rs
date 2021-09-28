@@ -121,13 +121,11 @@ unallocated memory if, for example, you pass an array that represents the `None`
 `Option<Vec<T>>`.
             """]
             #[no_mangle]
-            pub extern "C" fn [<ffi_array_ $t _free>](array: [<FFIArray $t>]) {
+            pub unsafe extern "C" fn [<ffi_array_ $t _free>](array: [<FFIArray $t>]) {
                 if array.ptr.is_null() {
                     return;
                 }
-                unsafe {
-                    let _ = Vec::from_raw_parts(array.ptr as *mut $t, array.len, array.cap);
-                }
+                drop(Vec::from_raw_parts(array.ptr as *mut $t, array.len, array.cap));
             }
 
             impl From<&[$t]> for [<FFIArray $t>] {
@@ -209,7 +207,7 @@ It's safe to call this with a null pointer.
             #[no_mangle]
             pub unsafe extern "C" fn [<option_ $t _free>](option: *const $t) {
                 if !option.is_null() {
-                    let _ = Box::from_raw(option as *mut $t);
+                    drop(Box::from_raw(option as *mut $t));
                 }
             }
         }
@@ -400,13 +398,11 @@ unallocated memory if, for example, you pass an array that represents the `None`
 `Option<Vec<T>>`.
             """]
             #[no_mangle]
-            pub extern "C" fn [<ffi_array_ $t _free>](array: [<FFIArray $t>]) {
+            pub unsafe extern "C" fn [<ffi_array_ $t _free>](array: [<FFIArray $t>]) {
                 if array.ptr.is_null() {
                     return;
                 }
-                unsafe {
-                    let _ = Vec::from_raw_parts(array.ptr as *mut *const $t, array.len, array.cap);
-                }
+                drop(Vec::from_raw_parts(array.ptr as *mut *const $t, array.len, array.cap));
             }
         }
     )*);

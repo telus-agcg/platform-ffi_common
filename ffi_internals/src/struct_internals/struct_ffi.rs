@@ -3,32 +3,61 @@
 //! consumer implementations.
 //!
 
-use crate::struct_internals::field_ffi::FieldFFI;
+use crate::struct_internals::field_ffi::{FieldFFI, FieldIdent};
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use std::{collections::HashSet, convert::TryFrom};
-use syn::{Fields, Ident, Path};
+use std::collections::HashSet;
+use syn::{spanned::Spanned, Fields, Ident, Path};
 
+/// Represents the components a struct for generating an FFI.
+///
 pub struct StructFFI {
+    /// The identifier for the FFI module to be generated.
+    ///
     module: Ident,
+    /// The name of the struct.
+    ///
     pub name: Ident,
+    /// Any imports that need to be included in the generated FFI module.
+    ///
     pub required_imports: Vec<Path>,
+    /// The generated FFI for each of this struct's fields.
+    ///
     pub fields: Vec<FieldFFI>,
+    /// The initializer arguments, as a `TokenStream` that we can just inject into the right place
+    /// in the generated module's initializer.
+    ///
     init_arguments: TokenStream,
+    /// The assignment expressions to convert the initializer arguments into native types, as a
+    /// `TokenStream` that we can just inject into the right place in the generated module's
+    /// initializer.
+    ///
     assignment_expressions: TokenStream,
+    /// The getter functions to include in this module, pre-generated and provided here as a
+    /// `TokenStream`.
+    ///
     getter_fns: TokenStream,
 }
 
 impl StructFFI {
+    /// The name of the initializer function for this struct.
+    ///
+    #[must_use]
     pub fn init_fn_name(&self) -> Ident {
         format_ident!("{}_init", self.name.to_string().to_snake_case())
     }
 
+    /// The name of the free function for this struct.
+    ///
+    #[must_use]
     pub fn free_fn_name(&self) -> Ident {
         format_ident!("{}_free", self.name.to_string().to_snake_case())
     }
 
+    /// The name of the clone function for this struct.
+    ///
+    #[must_use]
     pub fn clone_fn_name(&self) -> Ident {
         format_ident!("clone_{}", self.name.to_string().to_snake_case())
     }
@@ -50,35 +79,73 @@ impl StructFFI {
     }
 }
 
-pub struct StructInputs {
-    pub module_name: Ident,
+/// Representes the inputs for building a `StructFFI`.
+///
+pub struct StructInputs<'a> {
+    /// The identifier for the FFI module to be generated.
+    ///
+    pub module_name: &'a Ident,
+    /// The name of the struct.
+    ///
     pub type_name: Ident,
-    pub data: syn::DataStruct,
-    pub alias_modules: Vec<String>,
-    pub required_imports: Vec<Path>,
+    /// The struct's parsed data structure.
+    ///
+    pub data: &'a syn::DataStruct,
+    /// Alias modules that are referenced by the types of this struct's fields.
+    ///
+    pub alias_modules: &'a [String],
+    /// Any imports that need to be included in the generated FFI module.
+    ///
+    pub required_imports: &'a [Path],
 }
 
-#[derive(Debug, Clone, Copy)]
-pub enum DeriveError {
-    UnnamedFields,
-    UnitFields,
-}
+use super::field_ffi::FieldInputs;
 
-impl TryFrom<&StructInputs> for StructFFI {
-    type Error = DeriveError;
-
-    fn try_from(derive: &StructInputs) -> Result<Self, Self::Error> {
+impl<'a> From<&StructInputs<'a>> for StructFFI {
+    fn from(derive: &StructInputs<'_>) -> Self {
         // Map the fields of the struct into initializer arguments, assignment expressions, and
         // getter functions.
         let fields: Vec<FieldFFI> = match &derive.data.fields {
-            Fields::Named(named) => named,
-            Fields::Unnamed(_) => return Err(DeriveError::UnnamedFields),
-            Fields::Unit => return Err(DeriveError::UnitFields),
-        }
-        .named
-        .iter()
-        .map(|field| FieldFFI::from((derive.type_name.clone(), field, &*derive.alias_modules)))
-        .collect();
+            Fields::Named(fields) => fields
+                .named
+                .iter()
+                .map(|field| {
+                    FieldFFI::from(FieldInputs {
+                        type_ident: derive.type_name.clone(),
+                        field_ident: field.ident.clone().map_or_else(
+                            || {
+                                proc_macro_error::abort!(
+                                    field.span(),
+                                    "Expected field to have an identifier."
+                                )
+                            },
+                            FieldIdent::NamedField,
+                        ),
+                        field_type: &field.ty,
+                        field_attrs: &*field.attrs,
+                        alias_modules: derive.alias_modules,
+                    })
+                })
+                .collect(),
+            Fields::Unnamed(fields) => fields
+                .unnamed
+                .iter()
+                .enumerate()
+                .map(|(index, field)| {
+                    FieldFFI::from(FieldInputs {
+                        type_ident: derive.type_name.clone(),
+                        field_ident: FieldIdent::UnnamedField(index),
+                        field_type: &field.ty,
+                        field_attrs: &*field.attrs,
+                        alias_modules: derive.alias_modules,
+                    })
+                })
+                .collect(),
+            Fields::Unit => proc_macro_error::abort!(
+                derive.data.fields.span(),
+                "Unit fields are not supported."
+            ),
+        };
 
         let (init_arguments, assignment_expressions, getter_fns) =
             fields
@@ -92,15 +159,15 @@ impl TryFrom<&StructInputs> for StructFFI {
 
         let module = derive.module_name.clone();
         let name = derive.type_name.clone();
-        Ok(Self {
+        Self {
             module,
             name,
-            required_imports: derive.required_imports.clone(),
+            required_imports: derive.required_imports.to_owned(),
             fields,
             init_arguments,
             assignment_expressions,
             getter_fns,
-        })
+        }
     }
 }
 
@@ -120,7 +187,7 @@ impl From<StructFFI> for TokenStream {
         quote!(
             #[allow(box_pointers, missing_docs)]
             pub mod #module_name {
-                use ffi_common::ffi_core::{*, paste, datetime::*, string::FFIArrayString};
+                use ffi_common::core::{*, paste, datetime::*, string::FFIArrayString};
                 use std::os::raw::c_char;
                 use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
                 #extra_imports
@@ -134,7 +201,7 @@ impl From<StructFFI> for TokenStream {
                 declare_opaque_type_ffi! { #type_name }
 
                 #[no_mangle]
-                pub extern "C" fn #init_fn_name(
+                pub unsafe extern "C" fn #init_fn_name(
                     #init_arguments
                 ) -> *const #type_name {
                     let data = #type_name {
@@ -144,8 +211,8 @@ impl From<StructFFI> for TokenStream {
                 }
 
                 #[no_mangle]
-                pub extern "C" fn #clone_fn_name(ptr: *const #type_name) -> *const #type_name {
-                    unsafe { Box::into_raw(Box::new((&*ptr).clone())) }
+                pub unsafe extern "C" fn #clone_fn_name(ptr: *const #type_name) -> *const #type_name {
+                    Box::into_raw(Box::new((&*ptr).clone()))
                 }
 
                 #getter_fns

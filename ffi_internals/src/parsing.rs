@@ -2,36 +2,41 @@
 //! Parses the data that we're interested in out of `syn::DeriveInput` syntax tree.
 //!
 
+use proc_macro_error::{abort, OptionExt, ResultExt};
 use std::fs::File;
 use std::io::Read;
 use syn::{
-    Attribute, GenericArgument, Ident, Item, Meta, NestedMeta, Path, PathArguments, PathSegment,
-    Type,
+    spanned::Spanned, Attribute, GenericArgument, Ident, Item, Meta, NestedMeta, Path,
+    PathArguments, PathSegment, Type,
 };
 
 mod field_attributes;
+mod fn_attributes;
 mod impl_attributes;
 mod struct_attributes;
+mod type_attributes;
 
 pub use field_attributes::FieldAttributes;
+pub use fn_attributes::FnAttributes;
 pub use impl_attributes::ImplAttributes;
-pub use struct_attributes::StructAttributes;
+pub use struct_attributes::{CustomAttributes, StructAttributes};
+pub use type_attributes::TypeAttributes;
 
 /// If the path of the `Attribute` parameter is `"ffi"`, this will return a Vec of the attribute's
 /// `NestedMeta` data. If other types of data are found in an `"ffi"` attribute, this will panic.
 ///
-fn parse_ffi_meta(attr: &Attribute) -> Result<Vec<NestedMeta>, ()> {
+fn parse_ffi_meta(attr: &Attribute) -> Vec<NestedMeta> {
     if !attr.path.is_ident("ffi") {
-        return Ok(Vec::new());
+        return Vec::new();
     }
 
     match attr.parse_meta() {
-        Ok(Meta::List(meta)) => Ok(meta.nested.into_iter().collect()),
+        Ok(Meta::List(meta)) => meta.nested.into_iter().collect(),
         Ok(other) => {
-            panic!("Unexpected meta attribute found: {:?}", other);
+            abort!(other.span(), "Unexpected meta attribute.")
         }
         Err(err) => {
-            panic!("Error parsing meta attribute: {:?}", err);
+            abort!(attr.span(), "Error parsing meta attribute: {}.", err)
         }
     }
 }
@@ -52,14 +57,20 @@ pub(super) enum WrappingType {
 
 /// Returns true if an element of `attrs` marks this item as `repr(C)`. Otherwise, false.
 ///
+#[must_use]
 pub fn is_repr_c(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.parse_meta().map_or(false, |m| {
             if let Meta::List(l) = m {
                 if l.path.segments.first().map(|s| s.ident.to_string()) == Some("repr".to_string())
                 {
-                    if let NestedMeta::Meta(m) = l.nested.first().unwrap_or_else(|| panic!("Expected attribute list to include metadata: {:?} to have an identifier.", &l)) {
-                        return m.path().segments.first().map(|s| s.ident.to_string()) == Some("C".to_string());
+                    if let NestedMeta::Meta(m) = l
+                        .nested
+                        .first()
+                        .expect_or_abort("Expected `repr` attribute to have a nested identifier.")
+                    {
+                        return m.path().segments.first().map(|s| s.ident.to_string())
+                            == Some("C".to_string());
                     }
                 }
                 false
@@ -79,18 +90,27 @@ pub fn is_repr_c(attrs: &[Attribute]) -> bool {
 ///
 /// Pretty gross, but should get nuked in DEV-13175 in favor parsing the FFI module into a type.
 ///
+#[must_use]
 #[allow(clippy::complexity)]
 pub fn parse_custom_ffi_type(
     path: &str,
     type_name: &str,
     expected_init: &Ident,
 ) -> (Vec<(Ident, Type)>, Vec<(Ident, Type)>) {
-    let mut file = File::open(path).expect(&format!("Unable to open file {:?}", path));
+    let mut file = File::open(path).unwrap_or_else(|err| {
+        proc_macro_error::abort_call_site!("Unable to open file {:?} with error {}", path, err)
+    });
     let mut src = String::new();
-    let _ = file.read_to_string(&mut src).expect("Unable to read file");
+    let _ = file.read_to_string(&mut src).unwrap_or_else(|err| {
+        proc_macro_error::abort_call_site!(
+            "Unable to read file at path {:?} with error {}",
+            path,
+            err
+        )
+    });
 
     let fns: Vec<syn::ItemFn> = syn::parse_file(&src)
-        .expect("Unable to parse file")
+        .expect_or_abort("Could not parse file.")
         .items
         .into_iter()
         .filter_map(|item| {
@@ -105,22 +125,28 @@ pub fn parse_custom_ffi_type(
     let initializer = fns
         .iter()
         .find(|f| &f.sig.ident == expected_init)
-        .unwrap_or_else(|| {
-            panic!(
-                "No function found with identifier {:?} in file {:?}",
-                expected_init, file
-            )
-        })
+        .expect_or_abort(&format!(
+            "No function found with identifier {:?} in file {:?}",
+            expected_init, file
+        ))
         .clone();
 
     // Make sure the initializer's signature is right.
     if let syn::ReturnType::Type(_, return_type) = &initializer.sig.output {
-        assert_eq!(
-            return_type.as_ref(),
-            &syn::parse_str::<Type>(&format!("*const {}", type_name)).unwrap()
-        );
+        let expected_return_type = &syn::parse_str::<Type>(&format!("*const {}", type_name))
+            .expect_or_abort("Error parsing expected signature");
+        if return_type.as_ref() != expected_return_type {
+            abort!(
+                return_type.span(),
+                "Expected return type {:?}",
+                expected_return_type
+            )
+        }
     } else {
-        panic!("Couldn't find expected type signature on custom initializer.")
+        proc_macro_error::abort_call_site!(
+            "Couldn't find expected type signature on custom initializer in file {:?}.",
+            file
+        )
     }
 
     let init_data: Vec<(Ident, Type)> = initializer
@@ -133,7 +159,7 @@ pub fn parse_custom_ffi_type(
                     return (ident.ident.clone(), *arg.ty.clone());
                 }
             }
-            panic!("Unsupported initializer argument: {:?}", arg);
+            abort!(arg.span(), "Unsupported initializer argument: {:?}", arg)
         })
         .collect();
 
@@ -143,14 +169,14 @@ pub fn parse_custom_ffi_type(
             if &f.sig.ident == expected_init {
                 return None;
             }
-            let expected_arg = syn::parse_str::<syn::FnArg>(&format!("ptr: *const {}", type_name)).unwrap();
-            if f.sig.inputs.len() != 1 || f.sig.inputs.first().unwrap() != &expected_arg {
-                panic!("Non-initializer functions in the custom FFI module must take exactly one `ptr: *const TypeName` argument. Found:\n\n {:?}", f.sig.inputs);
+            let expected_arg = syn::parse_str::<syn::FnArg>(&format!("ptr: *const {}", type_name)).unwrap_or_abort();
+            if f.sig.inputs.len() != 1 || f.sig.inputs.first().expect_or_abort("") != &expected_arg {
+                abort!(f.sig.span(), "Non-initializer functions in the custom FFI module must take exactly one `ptr: *const TypeName` argument. Found:\n\n {:?}", f.sig.inputs);
             }
             if let syn::ReturnType::Type(_, return_type) = &f.sig.output {
                 return Some((f.sig.ident.clone(), *return_type.clone()));
             }
-            panic!("Can't read return type of function: {:?}", f);
+            abort!(f.span(), "Can't read return type of function: {:?}", f);
         })
         .collect();
 
@@ -160,10 +186,8 @@ pub fn parse_custom_ffi_type(
 /// Dig the `Meta::Path` out of a `NestedMeta` if present, and return the `Path`.
 ///
 pub(super) fn parse_path_from_nested_meta(arg: &NestedMeta) -> Option<Path> {
-    if let NestedMeta::Meta(meta) = arg {
-        if let Meta::Path(path) = meta {
-            return Some(path.clone());
-        }
+    if let NestedMeta::Meta(Meta::Path(path)) = arg {
+        return Some(path.clone());
     }
     None
 }
@@ -198,7 +222,10 @@ pub(super) fn separate_wrapping_type_from_inner_type(
     };
 
     match field_type_path.arguments {
-        PathArguments::None => panic!("No generic args in an option type...?"),
+        PathArguments::None => abort!(
+            field_type_path.span(),
+            "No generic args in an option type...?"
+        ),
         PathArguments::AngleBracketed(generic) => {
             if let Some(GenericArgument::Type(t)) = generic.args.first() {
                 if let Some(inner_segment) = get_segment_for_field(t) {
@@ -215,13 +242,16 @@ pub(super) fn separate_wrapping_type_from_inner_type(
                         (inner_segment.ident, wrapping_type)
                     }
                 } else {
-                    panic!("Unsupported path type in generic position")
+                    abort!(t.span(), "Unsupported path type in generic position")
                 }
             } else {
-                panic!("No generic args...?")
+                abort!(generic.span(), "No generic args...?")
             }
         }
-        PathArguments::Parenthesized(_) => panic!("Parenthesized path args are not supported."),
+        PathArguments::Parenthesized(_) => abort!(
+            field_type_path.span(),
+            "Parenthesized path args are not supported."
+        ),
     }
 }
 

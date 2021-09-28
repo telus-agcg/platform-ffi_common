@@ -24,7 +24,7 @@ extension FFIArrayString: FFIArray {
 }
 
 public extension String {
-    func toRust() -> UnsafePointer<CChar>? {
+    func clone() -> UnsafePointer<CChar>? {
         (self as NSString).utf8String
     }
 
@@ -36,8 +36,8 @@ public extension String {
 }
 
 public extension Array where Element == String {
-    func toRust() -> FFIArrayString {
-        let ffiArray = map { $0.toRust() }
+    func clone() -> FFIArrayString {
+        let ffiArray = map { $0.clone() }
         let len = ffiArray.count
         return ffiArray.withUnsafeBufferPointer { FFIArrayString.from(ptr: $0.baseAddress, len: len) }
     }
@@ -61,11 +61,11 @@ public extension Optional where Wrapped == String {
         return String.fromRust(foreignObject)
     }
 
-    func toRust() -> UnsafePointer<CChar>? {
+    func clone() -> UnsafePointer<CChar>? {
         guard case let .some(value) = self else {
             return nil
         }
-        return value.toRust()
+        return value.clone()
     }
 }
 
@@ -85,10 +85,10 @@ public extension Optional where Wrapped == [String] {
         return Wrapped.fromRust(foreignObject)
     }
 
-    func toRust() -> FFIArrayString {
+    func clone() -> FFIArrayString {
         switch self {
         case let .some(wrapped):
-            let ffiArray = wrapped.map { $0.toRust() }
+            let ffiArray = wrapped.map { $0.clone() }
             let len = ffiArray.count
             return ffiArray.withUnsafeBufferPointer { ffi_array_string_init($0.baseAddress, len) }
         case .none:

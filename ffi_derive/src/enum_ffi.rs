@@ -2,13 +2,13 @@
 //! Creates an FFI module for an (FFI-safe) `enum` data structure.
 //!
 
-use ffi_consumer::consumer_enum::ConsumerEnum;
-use proc_macro2::TokenStream;
+use ffi_internals::consumer::consumer_enum::ConsumerEnum;
 use ffi_internals::{
+    heck::SnakeCase,
     quote::{format_ident, quote},
     syn::Ident,
-    heck::SnakeCase,
 };
+use proc_macro2::TokenStream;
 
 /// Builds an FFI module for the enum `type_name`.
 ///
@@ -20,12 +20,13 @@ pub(super) fn build(module_name: &Ident, type_name: &Ident, out_dir: &str) -> To
     };
 
     let file_name = format!("{}.swift", type_name.to_string());
-    ffi_internals::write_consumer_file(&file_name, consumer.into(), out_dir);
+    ffi_internals::write_consumer_file(&file_name, consumer.into(), out_dir)
+        .unwrap_or_else(|err| proc_macro_error::abort!("Error writing consumer file: {}", err));
 
     quote! {
         #[allow(missing_docs)]
         pub mod #module_name {
-            use ffi_common::ffi_core::{error, paste, declare_value_type_ffi};
+            use ffi_common::core::{error, paste, declare_value_type_ffi};
             use super::*;
 
             #[no_mangle]

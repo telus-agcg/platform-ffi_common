@@ -27,30 +27,45 @@ pub extern "C" fn time_stamp_init(secs: i64, nsecs: u32) -> *const TimeStamp {
 
 /// Retrieve the components of a `NaiveDateTime` as a `TimeStamp`.
 ///
+/// # Safety
+///
+/// `ptr` is unchecked and will be dereferenced, so it must not be null.
+///
 #[must_use]
 #[allow(clippy::missing_const_for_fn)]
 #[no_mangle]
-pub extern "C" fn get_time_stamp_secs(ptr: *const TimeStamp) -> i64 {
-    let data = unsafe { &*ptr };
-    data.secs
+pub unsafe extern "C" fn get_time_stamp_secs(ptr: *const TimeStamp) -> i64 {
+    (*ptr).secs
 }
 
 /// Retrieve the components of a `NaiveDateTime` as a `TimeStamp`.
 ///
+/// # Safety
+///
+/// `ptr` is unchecked and will be dereferenced, so it must not be null.
+///
 #[must_use]
 #[allow(clippy::missing_const_for_fn)]
 #[no_mangle]
-pub extern "C" fn get_time_stamp_nsecs(ptr: *const TimeStamp) -> u32 {
-    let data = unsafe { &*ptr };
-    data.nsecs
+pub unsafe extern "C" fn get_time_stamp_nsecs(ptr: *const TimeStamp) -> u32 {
+    (*ptr).nsecs
 }
 
 /// Return a `TimeStamp` to Rust to free.
 ///
+/// # Safety
+///
+/// We assume that the memory behind `ptr` was allocated by Rust. Don't call this with an object
+/// created on the other side of the FFI boundary; that is undefined behavior.
+///
+/// You **must not** access `ptr` after passing it to this method.
+///
+/// It's safe to call this with a null pointer.
+///
 #[no_mangle]
-pub extern "C" fn time_stamp_free(ptr: *mut TimeStamp) {
+pub unsafe extern "C" fn time_stamp_free(ptr: *mut TimeStamp) {
     if !ptr.is_null() {
-        let _ = unsafe { Box::from_raw(ptr) };
+        drop(Box::from_raw(ptr));
     }
 }
 
@@ -118,21 +133,24 @@ mod tests {
     #[test]
     fn naive_date_time_to_time_stamp() {
         let secs: i64 = 1_599_868_112;
-        let nsecs: u32 = 1_599_868;
-        let datetime = NaiveDateTime::from_timestamp(secs, nsecs);
+        let nano_secs: u32 = 1_599_868;
+        let datetime = NaiveDateTime::from_timestamp(secs, nano_secs);
         let timestamp = TimeStamp::from(&datetime);
         assert_eq!(timestamp.secs, secs);
-        assert_eq!(timestamp.nsecs, nsecs);
+        assert_eq!(timestamp.nsecs, nano_secs);
     }
 
     #[test]
     fn time_stamp_to_naive_date_time_() {
         let secs: i64 = 1_599_868_112;
-        let nsecs: u32 = 1_599_868;
-        let timestamp = TimeStamp { secs, nsecs };
+        let nano_secs: u32 = 1_599_868;
+        let timestamp = TimeStamp {
+            secs,
+            nsecs: nano_secs,
+        };
         let datetime = NaiveDateTime::from(&timestamp);
         assert_eq!(datetime.timestamp(), secs);
-        assert_eq!(datetime.timestamp_subsec_nanos(), nsecs);
+        assert_eq!(datetime.timestamp_subsec_nanos(), nano_secs);
     }
 
     #[test]
