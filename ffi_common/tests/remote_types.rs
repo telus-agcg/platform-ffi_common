@@ -33,11 +33,11 @@ pub struct StructWithRemoteTypeFields {
 fn test_remote_wrapper() {
     unsafe {
         let wrapper =
-            date_time_wrapper_ffi::date_time_wrapper_init(ffi_string!("2020-10-27T16:30:52Z"));
+            date_time_wrapper_ffi::date_time_wrapper_rust_ffi_init(ffi_string!("2020-10-27T16:30:52Z"));
         // `wrapper` is consumed here; note that even with wrapped remote types, arguments passed to an
         // FFI initializer are considered `move`s.
         let struct_with_remote =
-            struct_with_remote_type_fields_ffi::struct_with_remote_type_fields_init(
+            struct_with_remote_type_fields_ffi::struct_with_remote_type_fields_rust_ffi_init(
                 42,
                 wrapper as *mut DateTimeWrapper,
             );
@@ -45,6 +45,6 @@ fn test_remote_wrapper() {
             (*struct_with_remote).remote.to_string(),
             "2020-10-27 16:30:52 UTC"
         );
-        struct_with_remote_type_fields_ffi::struct_with_remote_type_fields_free(struct_with_remote);
+        struct_with_remote_type_fields_ffi::struct_with_remote_type_fields_rust_ffi_free(struct_with_remote);
     }
 }

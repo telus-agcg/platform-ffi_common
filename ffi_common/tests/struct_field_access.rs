@@ -72,7 +72,7 @@ fn test_struct_ffi() {
         let ffi_date_array = FFIArrayTimeStamp::from(input_date_vec.as_deref());
 
         // Initialize the test instance through the ffi init, getting back a pointer to it.
-        let test_struct = test_struct_ffi::test_struct_init(
+        let test_struct = test_struct_ffi::test_struct_rust_ffi_init(
             ffi_string,
             ffi_i32_array,
             variant,
@@ -115,6 +115,6 @@ fn test_struct_ffi() {
         );
 
         // Free the thing.
-        test_struct_free(test_struct);
+        test_struct_rust_ffi_free(test_struct);
     }
 }
