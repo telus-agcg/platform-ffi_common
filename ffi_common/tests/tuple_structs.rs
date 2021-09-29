@@ -12,9 +12,9 @@ fn access_wrapper_ffo() {
     let value1 = 42;
     let value2 = 99;
     unsafe {
-        let input1 = some_type_ffi::some_type_init(value1) as *mut SomeType;
-        let input2 = some_type_ffi::some_type_init(value2) as *mut SomeType;
-        let wrapper = wrapper_ffi::wrapper_init(input1, input2);
+        let input1 = some_type_ffi::some_type_rust_ffi_init(value1) as *mut SomeType;
+        let input2 = some_type_ffi::some_type_rust_ffi_init(value2) as *mut SomeType;
+        let wrapper = wrapper_ffi::wrapper_rust_ffi_init(input1, input2);
         let output1 = wrapper_ffi::get_wrapper_unnamed_field_0(wrapper);
         let output2 = wrapper_ffi::get_wrapper_unnamed_field_1(wrapper);
         assert_eq!(value1, (*output1).value);

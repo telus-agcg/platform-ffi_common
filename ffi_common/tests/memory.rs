@@ -32,8 +32,8 @@ fn check_uuid_vec_init_and_free() {
         let original_pointee = *unsafe_ptr;
 
         assert_eq!(*unsafe_ptr, original_pointee);
-        let uuid_struct = uuid_struct_init(string_array);
-        uuid_struct_free(uuid_struct);
+        let uuid_struct = uuid_struct_rust_ffi_init(string_array);
+        uuid_struct_rust_ffi_free(uuid_struct);
     }
 }
 
@@ -42,15 +42,15 @@ fn check_struct_vec_init_and_free() {
     unsafe {
         let ids1 = vec![Uuid::new_v4(), Uuid::new_v4()];
         let ids2 = vec![Uuid::new_v4(), Uuid::new_v4()];
-        let inner_struct1 = *Box::from_raw(uuid_struct_init((&*ids1).into()) as *mut _);
-        let inner_struct2 = *Box::from_raw(uuid_struct_init((&*ids2).into()) as *mut _);
+        let inner_struct1 = *Box::from_raw(uuid_struct_rust_ffi_init((&*ids1).into()) as *mut _);
+        let inner_struct2 = *Box::from_raw(uuid_struct_rust_ffi_init((&*ids2).into()) as *mut _);
         let v = vec![inner_struct1, inner_struct2];
         let inner_array = FFIArrayUuidStruct::from(&*v);
         let unsafe_ptr = inner_array.ptr;
         let original_value = *unsafe_ptr;
 
         assert_eq!(*unsafe_ptr, original_value);
-        let outer_struct = nested_struct_ffi::nested_struct_init(inner_array);
-        nested_struct_ffi::nested_struct_free(outer_struct);
+        let outer_struct = nested_struct_ffi::nested_struct_rust_ffi_init(inner_array);
+        nested_struct_ffi::nested_struct_rust_ffi_free(outer_struct);
     }
 }
