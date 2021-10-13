@@ -20,7 +20,7 @@ pub(crate) enum FieldSource<'a> {
     Enum {
         variant_ident: &'a Ident,
         variant_fields_len: usize,
-        other_variants: Vec<Ident>,
+        other_variants: Vec<(Ident, usize)>,
     },
 }
 
@@ -50,23 +50,6 @@ pub struct FieldFFI<'a> {
 }
 
 impl<'a> FieldFFI<'a> {
-    // #[must_use]
-    // pub(crate) const fn new(
-    //     type_name: &'a Ident,
-    //     field_name: FieldIdent,
-    //     field_source: FieldSource<'a>,
-    //     native_type_data: TypeFFI,
-    //     attributes: FieldAttributes,
-    // ) -> Self {
-    //     Self {
-    //         type_name,
-    //         field_name,
-    //         field_source,
-    //         native_type_data,
-    //         attributes,
-    //     }
-    // }
-
     /// The name of the generated getter function. This is used to generate the Rust getter
     /// function, and the body of the consumer's getter, which ensures that they're properly linked.
     ///
@@ -128,10 +111,10 @@ impl<'a> FieldFFI<'a> {
             }
             FieldSource::Enum {
                 variant_ident,
-                variant_fields_len,
+                variant_fields_len: _,
                 other_variants,
             } => {
-                if other_variants.iter().any(|v| &v == variant_ident) {
+                if other_variants.iter().any(|v| &&v.0 == variant_ident) {
                     proc_macro_error::abort!(
                         self.type_name.span(),
                         "Internal error: `other_variants` contains `variant`"
@@ -147,12 +130,11 @@ impl<'a> FieldFFI<'a> {
                 let invalid_arms = other_variants
                     .iter()
                     .fold(quote!(), |mut acc, variant| {
-                        let variant_ident = &variant;
-                        let argument = if *variant_fields_len == 0 {
+                        let (variant_ident, variant_field_count) = &variant;
+                        let argument = if *variant_field_count == 0 {
                             quote!()
                         } else {
-                            let field_placeholders = vec![quote!(_); *variant_fields_len];
-                            quote!((#(#field_placeholders),*))
+                            quote!((..))
                         };
                         acc.extend(quote!(#type_name::#variant_ident#argument => unreachable!("This arm is unreachable."),));
                         acc
@@ -327,7 +309,7 @@ pub fn fields_for_variant<'a>(
     alias_modules: &'a [String],
     variant_ident: &'a Ident,
     variant_fields: &'a Fields,
-    other_variants: Vec<Ident>,
+    other_variants: Vec<(Ident, usize)>,
 ) -> Vec<FieldFFI<'a>> {
     match &variant_fields {
         Fields::Named(fields) => field_inputs_from_named_fields(

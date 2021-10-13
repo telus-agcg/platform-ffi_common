@@ -5,7 +5,7 @@
 use ffi_internals::{
     consumer::{
         consumer_struct::{ConsumerStruct, CustomConsumerStructInputs},
-        ConsumerType,
+        ConsumerOutput,
     },
     heck::SnakeCase,
     parsing,
@@ -41,12 +41,11 @@ pub(super) fn custom(
         free_fn_name: free_fn_name.to_string(),
         clone_fn_name: clone_fn_name.to_string(),
     };
-    let consumer = ConsumerStruct::from(inputs);
 
     let file_name = format!("{}.swift", type_name.to_string());
     ffi_internals::write_consumer_file(
         &file_name,
-        String::from(&consumer as &dyn ConsumerType),
+        (&ConsumerStruct::from(inputs)).output(),
         out_dir,
     )
     .unwrap_or_else(|err| {
@@ -89,7 +88,7 @@ pub(super) fn standard(
     let file_name = format!("{}.swift", type_name.to_string());
     ffi_internals::write_consumer_file(
         &file_name,
-        String::from(&ConsumerStruct::from(&struct_ffi) as &dyn ConsumerType),
+        (&ConsumerStruct::from(&struct_ffi)).output(),
         out_dir,
     )
     .unwrap_or_else(|err| {

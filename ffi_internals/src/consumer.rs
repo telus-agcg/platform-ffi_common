@@ -140,15 +140,27 @@ pub trait ConsumerType {
     fn required_imports(&self) -> &[syn::Path];
 }
 
-impl From<&dyn ConsumerType> for String {
-    fn from(consumer: &dyn ConsumerType) -> Self {
+/// Helper for turning any type that implements `ConsumerType` into an output `String`.
+/// 
+/// This trait is implemented for any type that implements `ConsumerType`, so there's no reason to
+/// implement this directly; instead, you probably want something like `std::fmt::Display` or
+/// `From<YourType> for String`.
+///
+pub trait ConsumerOutput {
+    /// The `String` to write to a file that defines this type and its behaviors for the consumer.
+    ///
+    fn output(&self) -> String;
+}
+
+impl<C> ConsumerOutput for &C where C: ConsumerType {
+    fn output(&self) -> String {
         [
-            header_and_imports(consumer.required_imports()),
-            consumer.type_definition(),
-            consumer.native_data_impl(),
-            consumer.ffi_array_impl(),
-            consumer.native_array_data_impl(),
-            consumer.option_impl(),
+            header_and_imports(self.required_imports()),
+            self.type_definition(),
+            self.native_data_impl(),
+            self.ffi_array_impl(),
+            self.native_array_data_impl(),
+            self.option_impl(),
         ]
         .join("")
     }

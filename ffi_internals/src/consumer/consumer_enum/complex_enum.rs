@@ -492,7 +492,7 @@ mod tests {
                             field_source: FieldSource::Enum {
                                 variant_ident: variant_1,
                                 variant_fields_len: 1,
-                                other_variants: vec![variant_2.clone()],
+                                other_variants: vec![(variant_2.clone(), 1)],
                             },
                             native_type_data: TypeFFI {
                                 native_type: TypeIdentifier::Raw(format_ident!("u16")),
@@ -516,7 +516,7 @@ mod tests {
                             field_source: FieldSource::Enum {
                                 variant_ident: variant_2,
                                 variant_fields_len: 1,
-                                other_variants: vec![variant_1.clone()],
+                                other_variants: vec![(variant_1.clone(), 1)],
                             },
                             native_type_data: TypeFFI {
                                 native_type: TypeIdentifier::Raw(format_ident!("u8")),

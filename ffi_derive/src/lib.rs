@@ -63,6 +63,8 @@
 //! 1. Typealiases over any of the above.
 //! 1. Typealiases defined in remote crates (see `Remote types` section).
 //! 1. Remote types with custom FFI implementations (see `Remote types` section).
+//! 1. Enums whose variants have one or zero fields (additional fields need more work in
+//! [this GitHub issue](https://github.com/agrian-inc/ffi_common/issues/22)).
 //! 1. A few specific generics:
 //!   1. `Option<T>` where `T` is any supported type (but not nested `Option<Option<T>>`).
 //!   1. `Vec<T>` where `T` is any supported type (but not nested `Vec<Vec<T>>`).

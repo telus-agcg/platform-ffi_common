@@ -5,7 +5,7 @@
 use ffi_internals::{
     consumer::{
         consumer_enum::{ComplexConsumerEnum, ReprCConsumerEnum},
-        ConsumerType,
+        ConsumerOutput
     },
     heck::SnakeCase,
     quote::{format_ident, quote},
@@ -20,7 +20,7 @@ pub(super) fn reprc(module_name: &Ident, type_name: &Ident, out_dir: &str) -> To
     let file_name = format!("{}.swift", type_name.to_string());
     ffi_internals::write_consumer_file(
         &file_name,
-        String::from(&ReprCConsumerEnum::new(type_name) as &dyn ConsumerType),
+        (&ReprCConsumerEnum::new(type_name)).output(),
         out_dir,
     )
     .unwrap_or_else(|err| proc_macro_error::abort!("Error writing consumer file: {}", err));
@@ -63,7 +63,7 @@ pub(super) fn complex(
                     if &other_variant == variant {
                         None
                     } else {
-                        Some(other_variant.ident)
+                        Some((other_variant.ident, other_variant.fields.len()))
                     }
                 })
                 .collect();
@@ -91,7 +91,7 @@ pub(super) fn complex(
     let file_name = format!("{}.swift", type_name.to_string());
     ffi_internals::write_consumer_file(
         &file_name,
-        String::from(&ComplexConsumerEnum::new(&enum_ffi) as &dyn ConsumerType),
+        (&ComplexConsumerEnum::new(&enum_ffi)).output(),
         out_dir,
     )
     .unwrap_or_else(|err| {

@@ -141,8 +141,7 @@ impl<'a> From<EnumFFI<'_>> for TokenStream {
             let variant_case = if variant.fields.is_empty() {
                 quote!(#variant_ident)
             } else {
-                let field_placeholders = vec![quote!(_); variant.fields.len()];
-                quote!(#variant_ident(#(#field_placeholders),*))
+                quote!(#variant_ident(..))
             };
             acc.extend(quote! {
                 #type_name::#variant_case => #reprc_enum::#variant_ident,
@@ -158,18 +157,23 @@ impl<'a> From<EnumFFI<'_>> for TokenStream {
                 .iter()
                 .map(FieldFFI::ffi_initializer_argument)
                 .collect();
-            let assignments: Vec<Self> = variant
-                .fields
-                .iter()
-                .map(FieldFFI::assignment_expression)
-                .collect();
+            let assignment = if variant.fields.is_empty() {
+                quote!()
+            } else {
+                let assignments: Vec<Self> = variant
+                    .fields
+                    .iter()
+                    .map(FieldFFI::assignment_expression)
+                    .collect();
+                quote!((#(#assignments),*))
+            };
             let init_fn = quote! {
                 /// # Safety
                 /// `data` must not be a null pointer, and it must point to the appropriate type for `variant`. Otherwise, this will panic.
                 ///
                 #[no_mangle]
                 pub unsafe extern "C" fn #init_fn_name(#(#args),*) -> *const #type_name {
-                    Box::into_raw(Box::new(#type_name::#variant_ident(#(#assignments),*)))
+                    Box::into_raw(Box::new(#type_name::#variant_ident#assignment))
                 }
             };
             acc.extend(init_fn);
