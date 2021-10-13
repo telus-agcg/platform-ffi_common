@@ -3,7 +3,10 @@
 //!
 
 use ffi_internals::{
-    consumer::consumer_struct::{ConsumerStruct, CustomConsumerStructInputs},
+    consumer::{
+        consumer_struct::{ConsumerStruct, CustomConsumerStructInputs},
+        ConsumerOutput,
+    },
     heck::SnakeCase,
     parsing,
     parsing::CustomAttributes,
@@ -38,13 +41,16 @@ pub(super) fn custom(
         free_fn_name: free_fn_name.to_string(),
         clone_fn_name: clone_fn_name.to_string(),
     };
-    let consumer = ConsumerStruct::from(inputs);
 
     let file_name = format!("{}.swift", type_name.to_string());
-    ffi_internals::write_consumer_file(&file_name, String::from(&consumer), out_dir)
-        .unwrap_or_else(|err| {
-            proc_macro_error::abort!(type_name.span(), "Error writing consumer file: {}", err)
-        });
+    ffi_internals::write_consumer_file(
+        &file_name,
+        (&ConsumerStruct::from(inputs)).output(),
+        out_dir,
+    )
+    .unwrap_or_else(|err| {
+        proc_macro_error::abort!(type_name.span(), "Error writing consumer file: {}", err)
+    });
 
     quote!(
         #[allow(box_pointers, missing_docs)]
@@ -56,7 +62,7 @@ pub(super) fn custom(
 
             #[no_mangle]
             pub unsafe extern "C" fn #free_fn_name(data: *const #type_name) {
-                let _ = Box::from_raw(data as *mut #type_name);
+                drop(Box::from_raw(data as *mut #type_name));
             }
 
             declare_opaque_type_ffi! { #type_name }
@@ -74,7 +80,7 @@ pub(super) fn standard(
 ) -> TokenStream {
     let struct_ffi = StructFFI::from(&StructInputs {
         module_name,
-        type_name: type_name.clone(),
+        type_name,
         data,
         alias_modules,
         required_imports,
@@ -82,7 +88,7 @@ pub(super) fn standard(
     let file_name = format!("{}.swift", type_name.to_string());
     ffi_internals::write_consumer_file(
         &file_name,
-        String::from(&ConsumerStruct::from(&struct_ffi)),
+        (&ConsumerStruct::from(&struct_ffi)).output(),
         out_dir,
     )
     .unwrap_or_else(|err| {
