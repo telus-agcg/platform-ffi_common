@@ -3,7 +3,7 @@
 //!
 //! Libraries that want to generate an interface for the FFI consumer (i.e., the language on the
 //! other side of the boundary) must do the following:
-//! 1. Add `ffi_common` to `[build-dependencies] in `Cargo.toml`.
+//! 1. Add `ffi_common` to `[build-dependencies]` in `Cargo.toml`.
 //! 1. Set the environment variable `FFI_CONSUMER_ROOT_DIR` to the path you want the consumer files
 //! written at (it doesn't have to exist as long as it's valid; we'll create any necessary
 //! directories on the way). We'll write the consumer files for each crate to a subdirectory using
@@ -141,7 +141,7 @@ pub trait ConsumerType {
 }
 
 /// Helper for turning any type that implements `ConsumerType` into an output `String`.
-/// 
+///
 /// This trait is implemented for any type that implements `ConsumerType`, so there's no reason to
 /// implement this directly; instead, you probably want something like `std::fmt::Display` or
 /// `From<YourType> for String`.
@@ -152,7 +152,10 @@ pub trait ConsumerOutput {
     fn output(&self) -> String;
 }
 
-impl<C> ConsumerOutput for &C where C: ConsumerType {
+impl<C> ConsumerOutput for &C
+where
+    C: ConsumerType,
+{
     fn output(&self) -> String {
         [
             header_and_imports(self.required_imports()),

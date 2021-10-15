@@ -180,11 +180,19 @@ impl<'a> From<EnumFFI<'_>> for TokenStream {
             acc
         });
 
+        let required_imports: Vec<Self> = enum_ffi.required_imports
+            .iter()
+            .map(|import| {
+                quote!(use #import;)
+            })
+            .collect();
+
         quote! {
             #[allow(missing_docs)]
             pub mod #module_name {
                 use ffi_common::core::{error, paste, declare_opaque_type_ffi};
                 use std::any::Any;
+                #(#required_imports)*
                 use super::*;
 
                 #[derive(Debug, Clone, Copy, PartialEq, ffi_common::derive::FFI)]

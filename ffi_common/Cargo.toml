@@ -17,4 +17,5 @@ crate-type = ["staticlib", "rlib"]
 [dev-dependencies]
 approx = "0.5"
 chrono = "0.4"
+trybuild = "1.0"
 uuid = { version = "0.8", features = ["v4"] }

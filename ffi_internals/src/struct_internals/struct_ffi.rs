@@ -25,6 +25,11 @@ pub struct StructFFI<'a> {
     /// The generated FFI for each of this struct's fields.
     ///
     pub fields: Vec<FieldFFI<'a>>,
+    /// If true, do not generate a memberwise initializer for this type. Some types only allow
+    /// construction via specific APIs that implemenat additional checks; in those cases, a
+    /// generated memberwise init bypasses those restrictions.
+    ///
+    pub forbid_memberwise_init: bool,
     /// The initializer arguments, as a `TokenStream` that we can just inject into the right place
     /// in the generated module's initializer.
     ///
@@ -97,6 +102,11 @@ pub struct StructInputs<'a> {
     /// Any imports that need to be included in the generated FFI module.
     ///
     pub required_imports: &'a [Path],
+    /// If true, do not generate a memberwise initializer for this type. Some types only allow
+    /// construction via specific APIs that implemenat additional checks; in those cases, a
+    /// generated memberwise init bypasses those restrictions.
+    ///
+    pub forbid_memberwise_init: bool,
 }
 
 impl<'a> From<&StructInputs<'a>> for StructFFI<'a> {
@@ -141,6 +151,7 @@ impl<'a> From<&StructInputs<'a>> for StructFFI<'a> {
             init_arguments,
             assignment_expressions,
             getter_fns,
+            forbid_memberwise_init: derive.forbid_memberwise_init,
         }
     }
 }
@@ -156,24 +167,17 @@ impl<'a> From<StructFFI<'_>> for TokenStream {
         let free_fn_name = struct_ffi.free_fn_name();
         let init_fn_name = struct_ffi.init_fn_name();
         let clone_fn_name = struct_ffi.clone_fn_name();
+        let required_imports: Vec<Self> = struct_ffi.required_imports
+            .iter()
+            .map(|import| {
+                quote!(use #import;)
+            })
+            .collect();
 
-        // Create a new module for the FFI for this type.
-        quote!(
-            #[allow(box_pointers, missing_docs)]
-            pub mod #module_name {
-                use ffi_common::core::{*, paste, datetime::*, string::FFIArrayString};
-                use std::os::raw::c_char;
-                use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
-                #extra_imports
-                use super::*;
-
-                #[no_mangle]
-                pub unsafe extern "C" fn #free_fn_name(data: *const #type_name) {
-                    drop(Box::from_raw(data as *mut #type_name));
-                }
-
-                declare_opaque_type_ffi! { #type_name }
-
+        let initializer = if struct_ffi.forbid_memberwise_init {
+            quote!()
+        } else {
+            quote! {
                 #[no_mangle]
                 pub unsafe extern "C" fn #init_fn_name(
                     #init_arguments
@@ -183,6 +187,28 @@ impl<'a> From<StructFFI<'_>> for TokenStream {
                     };
                     Box::into_raw(Box::new(data))
                 }
+            }
+        };
+
+        // Create a new module for the FFI for this type.
+        quote!(
+            #[allow(box_pointers, missing_docs)]
+            pub mod #module_name {
+                use ffi_common::core::{*, paste, datetime::*, string::FFIArrayString};
+                use std::os::raw::c_char;
+                use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
+                #extra_imports
+                #(#required_imports)*
+                use super::*;
+
+                #[no_mangle]
+                pub unsafe extern "C" fn #free_fn_name(data: *const #type_name) {
+                    drop(Box::from_raw(data as *mut #type_name));
+                }
+
+                declare_opaque_type_ffi! { #type_name }
+
+                #initializer
 
                 #[no_mangle]
                 pub unsafe extern "C" fn #clone_fn_name(ptr: *const #type_name) -> *const #type_name {

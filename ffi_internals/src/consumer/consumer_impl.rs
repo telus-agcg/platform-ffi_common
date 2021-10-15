@@ -10,7 +10,7 @@ impl ImplFFI {
     ///
     #[must_use]
     pub fn consumer_file_name(&self) -> String {
-        format!("{}_{}.swift", self.trait_name, self.type_name)
+        format!("{}_{}.swift", self.impl_description, self.type_name)
     }
 
     /// Generates an implementation for the consumer's type so that they'll be able to call it like

@@ -19,6 +19,11 @@ pub struct StructAttributes {
     /// Any imports that need to be included in the generated FFI module.
     ///
     pub required_imports: Vec<Path>,
+    /// If true, do not generate a memberwise initializer for this type. Some types only allow
+    /// construction via specific APIs that implemenat additional checks; in those cases, a
+    /// generated memberwise init bypasses those restrictions.
+    ///
+    pub forbid_memberwise_init: bool,
 }
 
 /// Helper attributes that describe special behavior for structs with a custom FFI.
@@ -42,6 +47,7 @@ impl From<&[Attribute]> for StructAttributes {
         let mut alias_modules = vec![];
         let mut custom_attributes: Option<CustomAttributes> = None;
         let mut required_imports = vec![];
+        let mut forbid_memberwise_init = false;
         for meta_item in attrs.iter().flat_map(super::parse_ffi_meta) {
             match &meta_item {
                 NestedMeta::Meta(Meta::NameValue(m)) if m.path.is_ident("custom") => {
@@ -75,8 +81,11 @@ impl From<&[Attribute]> for StructAttributes {
                     );
                     custom_attributes = Some(c);
                 }
+                NestedMeta::Meta(Meta::Path(m)) if m.is_ident("forbid_memberwise_init") => {
+                    forbid_memberwise_init = true;
+                }
                 other => {
-                    proc_macro_error::abort!(other.span(), "Unsupported ffi attribute -- only `custom`, `alias_modules`, `required_imports`, `failable_init`, and `failable_fns` are allowed in this position.");
+                    proc_macro_error::abort!(other.span(), "Unsupported ffi attribute -- only `custom`, `alias_modules`, `required_imports`, `failable_init`, `failable_fns`, and `forbid_memberwise_init` are allowed in this position.");
                 }
             }
         }
@@ -84,6 +93,7 @@ impl From<&[Attribute]> for StructAttributes {
             alias_modules,
             custom_attributes,
             required_imports,
+            forbid_memberwise_init,
         }
     }
 }

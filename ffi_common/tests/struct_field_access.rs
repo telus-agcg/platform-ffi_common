@@ -23,7 +23,7 @@ impl Default for TestEnum {
     }
 }
 
-use crate::test_enum_ffi::FFIArrayTestEnum;
+use test_enum_ffi::FFIArrayTestEnum;
 
 #[derive(Debug, Clone, derive::FFI)]
 pub struct TestStruct {

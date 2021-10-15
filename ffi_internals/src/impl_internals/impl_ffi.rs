@@ -4,11 +4,12 @@
 //!
 
 use super::fn_ffi::{FnFFI, FnFFIInputs};
+use crate::parsing::FnAttributes;
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashMap;
-use syn::{Ident, ImplItem, Path};
+use syn::{Ident, ImplItem, Path, Type};
 
 /// Describes the data required to create an `ImplFFI`.
 ///
@@ -33,14 +34,22 @@ pub struct ImplInputs {
     ///
     pub raw_types: Vec<Ident>,
 
-    /// The name of the trait that's implemented.
+    /// A hashmap whose keys are `Type`s for the generics used throughout this impl and whose
+    /// values are `Type`s for the concrete types to use in place of the generic for FFI.
     ///
-    /// Note that this is currently required; we don't support standalone impls right now because
-    /// we're relying on the trait name + type name pair to guarantee uniqueness for the generated
-    /// FFI module and consumer file. If we have a use case for exposing standalone impls, we'll
-    /// have to come up with another way to ensure that uniqueness.
+    /// # Limitations
     ///
-    pub trait_name: Ident,
+    /// This breaks down if an impl contains multiple generic functions that use the same generic
+    /// parameter but need to be matched with different concrete types. If we run into that use
+    /// case, we'll need to do something else (or perhaps let the function attributes override in
+    /// those cases?).
+    ///
+    pub generics: HashMap<Type, Type>,
+
+    /// The description of this impl. This may be the name of a trait, or it may be provided
+    /// explicitly with the `description` attribute.
+    ///
+    pub impl_description: Ident,
 
     /// The name of the type that this implementation applies to.
     ///
@@ -49,7 +58,7 @@ pub struct ImplInputs {
 
 impl From<ImplInputs> for ImplFFI {
     fn from(inputs: ImplInputs) -> Self {
-        let (aliases, methods): (HashMap<Ident, syn::Type>, Vec<syn::ImplItemMethod>) = inputs
+        let (aliases, methods): (HashMap<Ident, Type>, Vec<syn::ImplItemMethod>) = inputs
             .items
             .iter()
             .fold((HashMap::new(), vec![]), |mut acc, item| match item {
@@ -73,15 +82,18 @@ impl From<ImplInputs> for ImplFFI {
             .map(|item| {
                 FnFFI::from(FnFFIInputs {
                     method: item,
-                    raw_types: inputs.raw_types.clone(),
-                    self_type: inputs.type_name.clone(),
+                    fn_attributes: &FnAttributes {
+                        extend_type: inputs.type_name.clone(),
+                        raw_types: inputs.raw_types.clone(),
+                        generics: inputs.generics.clone(),
+                    },
                     local_aliases: aliases.clone(),
                 })
             })
             .collect();
 
         Self {
-            trait_name: inputs.trait_name,
+            impl_description: inputs.impl_description,
             type_name: inputs.type_name,
             fns,
             ffi_imports: inputs.ffi_imports,
@@ -95,14 +107,10 @@ impl From<ImplInputs> for ImplFFI {
 ///
 #[derive(Debug)]
 pub struct ImplFFI {
-    /// The name of the trait that's implemented.
+    /// The description of this impl. This may be the name of a trait, or it may be provided
+    /// explicitly with the `description` attribute.
     ///
-    /// Note that this is currently required; we don't support standalone impls right now because
-    /// we're relying on the trait name + type name pair to guarantee uniqueness for the generated
-    /// FFI module and consumer file. If we have a use case for exposing standalone impls, we'll
-    /// have to come up with another way to ensure that uniqueness.
-    ///
-    pub(crate) trait_name: Ident,
+    pub(crate) impl_description: Ident,
 
     /// The name of the type that this implementation applies to.
     ///
@@ -136,7 +144,7 @@ impl ImplFFI {
     pub(crate) fn module_name(&self) -> Ident {
         format_ident!(
             "{}_{}_ffi",
-            self.trait_name.to_string().to_snake_case(),
+            self.impl_description.to_string().to_snake_case(),
             self.type_name.to_string().to_snake_case()
         )
     }

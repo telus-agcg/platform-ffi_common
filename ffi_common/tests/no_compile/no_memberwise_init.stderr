@@ -1,0 +1,8 @@
+error[E0425]: cannot find function `no_initializer_allowed_rust_ffi_init` in module `no_initializer_allowed_ffi`
+  --> tests/no_compile/no_memberwise_init.rs:11:50
+   |
+3  | #[derive(Debug, Clone, Copy, FFI)]
+   |                              --- similarly named function `no_initializer_allowed_rust_ffi_free` defined here
+...
+11 |     let _ = unsafe { no_initializer_allowed_ffi::no_initializer_allowed_rust_ffi_init(1) };
+   |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ help: a function with a similar name exists: `no_initializer_allowed_rust_ffi_free`

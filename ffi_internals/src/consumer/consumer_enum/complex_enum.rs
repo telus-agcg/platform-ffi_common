@@ -192,7 +192,7 @@ extension {type_name}: NativeEnum {{
                     .iter()
                     .map(|field| {
                         format!(
-                            "{spacer:l4$}{field_getter_name}(pointer)",
+                            "{spacer:l4$}.fromRust({field_getter_name}(pointer))",
                             spacer = " ",
                             l4 = TAB_SIZE * 4,
                             field_getter_name = field.getter_name()
@@ -598,14 +598,14 @@ extension TestType.FFI: ForeignEnum {
         case TestTypeType_variant1:
             return .variant1(
                 self,
-                get_test_type_variant1_unnamed_field_0(pointer)
+                .fromRust(get_test_type_variant1_unnamed_field_0(pointer))
             )
 
 
         case TestTypeType_variant2:
             return .variant2(
                 self,
-                get_test_type_variant2_unnamed_field_0(pointer)
+                .fromRust(get_test_type_variant2_unnamed_field_0(pointer))
             )
 
         default:

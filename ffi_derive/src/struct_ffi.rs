@@ -4,7 +4,7 @@
 
 use ffi_internals::{
     consumer::{
-        consumer_struct::{ConsumerStruct, CustomConsumerStructInputs},
+        consumer_struct::{CustomConsumerStructInputs, ConsumerStruct},
         ConsumerOutput,
     },
     heck::SnakeCase,
@@ -22,6 +22,7 @@ pub(super) fn custom(
     crate_root: &str,
     custom_attributes: &CustomAttributes,
     required_imports: &[Path],
+    forbid_memberwise_init: bool,
     out_dir: &str,
 ) -> TokenStream {
     let init_fn_name = format_ident!("{}_init", &type_name.to_string().to_snake_case());
@@ -40,6 +41,7 @@ pub(super) fn custom(
         getters: custom_ffi.1.as_ref(),
         free_fn_name: free_fn_name.to_string(),
         clone_fn_name: clone_fn_name.to_string(),
+        forbid_memberwise_init,
     };
 
     let file_name = format!("{}.swift", type_name.to_string());
@@ -76,6 +78,7 @@ pub(super) fn standard(
     data: &DataStruct,
     alias_modules: &[String],
     required_imports: &[Path],
+    forbid_memberwise_init: bool,
     out_dir: &str,
 ) -> TokenStream {
     let struct_ffi = StructFFI::from(&StructInputs {
@@ -84,6 +87,7 @@ pub(super) fn standard(
         data,
         alias_modules,
         required_imports,
+        forbid_memberwise_init,
     });
     let file_name = format!("{}.swift", type_name.to_string());
     ffi_internals::write_consumer_file(

@@ -5,7 +5,7 @@
 use ffi_internals::{
     consumer::{
         consumer_enum::{ComplexConsumerEnum, ReprCConsumerEnum},
-        ConsumerOutput
+        ConsumerOutput,
     },
     heck::SnakeCase,
     quote::{format_ident, quote},
