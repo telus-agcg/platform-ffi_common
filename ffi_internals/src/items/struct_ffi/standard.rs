@@ -3,7 +3,7 @@
 //! consumer implementations.
 //!
 
-use crate::struct_internals::field_ffi::{FieldFFI, FieldSource};
+use crate::items::field_ffi::{FieldFFI, FieldSource};
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -19,9 +19,12 @@ pub struct StructFFI<'a> {
     /// The name of the struct.
     ///
     pub name: &'a Ident,
-    /// Any imports that need to be included in the generated FFI module.
+    /// Paths that need to be imported into the consumer module.
     ///
-    pub required_imports: Vec<Path>,
+    pub consumer_imports: &'a [Path],
+    /// Paths that need to be imported into the FFI module.
+    ///
+    pub ffi_mod_imports: &'a [Path],
     /// The generated FFI for each of this struct's fields.
     ///
     pub fields: Vec<FieldFFI<'a>>,
@@ -70,7 +73,7 @@ impl StructFFI<'_> {
     /// Find any extra imports from `expose_as` attributes on this struct's fields, and return them
     /// as a `TokenStream`.
     ///
-    fn extra_imports(&self) -> TokenStream {
+    fn exposed_field_type_imports(&self) -> TokenStream {
         self.fields
             .as_slice()
             .iter()
@@ -99,9 +102,12 @@ pub struct StructInputs<'a> {
     /// Alias modules that are referenced by the types of this struct's fields.
     ///
     pub alias_modules: &'a [String],
-    /// Any imports that need to be included in the generated FFI module.
+    /// Paths that need to be imported into the consumer module.
     ///
-    pub required_imports: &'a [Path],
+    pub consumer_imports: &'a [Path],
+    /// Paths that need to be imported into the FFI module.
+    ///
+    pub ffi_mod_imports: &'a [Path],
     /// If true, do not generate a memberwise initializer for this type. Some types only allow
     /// construction via specific APIs that implemenat additional checks; in those cases, a
     /// generated memberwise init bypasses those restrictions.
@@ -112,13 +118,13 @@ pub struct StructInputs<'a> {
 impl<'a> From<&StructInputs<'a>> for StructFFI<'a> {
     fn from(derive: &StructInputs<'a>) -> Self {
         let fields: Vec<FieldFFI<'_>> = match &derive.data.fields {
-            Fields::Named(fields) => super::field_ffi::field_inputs_from_named_fields(
+            Fields::Named(fields) => crate::items::field_ffi::field_inputs_from_named_fields(
                 fields,
                 &FieldSource::Struct,
                 derive.type_name,
                 derive.alias_modules,
             ),
-            Fields::Unnamed(fields) => super::field_ffi::field_inputs_from_unnamed_fields(
+            Fields::Unnamed(fields) => crate::items::field_ffi::field_inputs_from_unnamed_fields(
                 fields,
                 &FieldSource::Struct,
                 derive.type_name,
@@ -146,7 +152,8 @@ impl<'a> From<&StructInputs<'a>> for StructFFI<'a> {
         Self {
             module: derive.module_name,
             name: derive.type_name,
-            required_imports: derive.required_imports.to_owned(),
+            consumer_imports: derive.consumer_imports,
+            ffi_mod_imports: derive.ffi_mod_imports,
             fields,
             init_arguments,
             assignment_expressions,
@@ -163,15 +170,14 @@ impl<'a> From<StructFFI<'_>> for TokenStream {
         let init_arguments = &struct_ffi.init_arguments;
         let assignment_expressions = &struct_ffi.assignment_expressions;
         let getter_fns = &struct_ffi.getter_fns;
-        let extra_imports = struct_ffi.extra_imports();
+        let exposed_field_type_imports = struct_ffi.exposed_field_type_imports();
         let free_fn_name = struct_ffi.free_fn_name();
         let init_fn_name = struct_ffi.init_fn_name();
         let clone_fn_name = struct_ffi.clone_fn_name();
-        let required_imports: Vec<Self> = struct_ffi.required_imports
+        let ffi_mod_imports: Vec<Self> = struct_ffi
+            .ffi_mod_imports
             .iter()
-            .map(|import| {
-                quote!(use #import;)
-            })
+            .map(|import| quote!(use #import;))
             .collect();
 
         let initializer = if struct_ffi.forbid_memberwise_init {
@@ -197,8 +203,8 @@ impl<'a> From<StructFFI<'_>> for TokenStream {
                 use ffi_common::core::{*, paste, datetime::*, string::FFIArrayString};
                 use std::os::raw::c_char;
                 use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
-                #extra_imports
-                #(#required_imports)*
+                #exposed_field_type_imports
+                #(#ffi_mod_imports)*
                 use super::*;
 
                 #[no_mangle]

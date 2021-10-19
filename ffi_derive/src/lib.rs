@@ -222,11 +222,11 @@
 //! crates into multiple consumer frameworks. This lets them mirror the crate structure instead of
 //! having a single monolithic framework interface. To support that, `ffi_derive` needs to know
 //! which remote types need to be imported for the consumer code. This can be expressed with the
-//! `required_imports` attribute. For example:
+//! `consumer_imports` attribute. For example:
 //! ```ignore
 //! use other_crate::module::OtherType;
 //!
-//! #[derive(ffi_derive::FFI), ffi(required_imports(other_crate::module::OtherType))]
+//! #[derive(ffi_derive::FFI), ffi(consumer_imports(other_crate::module::OtherType))]
 //! pub struct SomeType {
 //!     pub field: OtherType
 //! }
@@ -291,15 +291,15 @@
     variant_size_differences
 )]
 
-mod enum_ffi;
-mod struct_ffi;
-
 use ffi_internals::{
     alias_resolution,
+    consumer::{consumer_enum, consumer_struct::ConsumerStruct, ConsumerOutput},
     heck::SnakeCase,
-    impl_internals::{
+    items::{
+        enum_ffi,
         fn_ffi::FnFFI,
         impl_ffi::{ImplFFI, ImplInputs},
+        struct_ffi::{custom, standard},
     },
     parsing,
     quote::{format_ident, ToTokens},
@@ -327,14 +327,21 @@ use proc_macro_error::{abort, proc_macro_error};
 /// - *forbid_memberwise_init*: This attribute takes no arguments; instead, its presence indicates
 /// that we should not generate a memberwise initializer for this type. Usage looks like
 /// `ffi(forbid_memberwise_init)`.
-/// - *required_imports*: A list of absolute paths to be imported in the FFI module, as in
-/// `ffi(required_imports(crate::module::nested_module::Type))`.
+/// - *consumer_imports*: A list of paths to be imported into the consumer type definition. These
+/// should be absolute paths to remote crates; the goal here is to let the consumer set up
+/// frameworks that mirror the crate structure, which means they'll sometimes need to specify that a
+/// type needs to be imported from some other framework. This looks like
+/// `ffi(consumer_imports(remote_crate::module::Type))`.
+/// - *ffi_mod_imports*: A list of absolute paths to be imported in the FFI module, as in
+/// `ffi(ffi_mod_imports(crate::module::nested_module::Type))`. This does not need to include paths
+/// that are already in scope at the level where this type is defined; those will be imported into
+/// the FFI module automatically.
 ///
 /// # Fields
 ///
 /// ## Custom Struct
 ///
-/// The following attributes are valid for structs with a manually implemented FFI:
+/// The following additional attributes are valid for structs with a manually implemented FFI:
 ///
 /// - *custom*: The filepath (relative to the crate's root) to the file containing the FFI
 /// implementation for the struct, as in `ffi(custom = "src/directory/file.rs")`.
@@ -371,40 +378,48 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
     match &ast.data {
         Data::Struct(data) => struct_attributes.custom_attributes.as_ref().map_or_else(
             || {
-                struct_ffi::standard(
-                    &module_name,
-                    &type_name,
+                let ffi = standard::StructFFI::from(&standard::StructInputs {
+                    module_name: &module_name,
+                    type_name: &type_name,
                     data,
-                    &*struct_attributes.alias_modules,
-                    &*struct_attributes.required_imports,
-                    struct_attributes.forbid_memberwise_init,
-                    &out_dir,
-                )
+                    alias_modules: &*struct_attributes.alias_modules,
+                    consumer_imports: &struct_attributes.consumer_imports,
+                    ffi_mod_imports: &struct_attributes.ffi_mod_imports,
+                    forbid_memberwise_init: struct_attributes.forbid_memberwise_init,
+                });
+                (&ConsumerStruct::from(&ffi)).write_output(&out_dir);
+                ffi.into()
             },
             |custom_attributes| {
-                struct_ffi::custom(
+                let ffi = custom::StructFFI::new(
                     &type_name,
                     &module_name,
                     &crate_root,
                     custom_attributes,
-                    &struct_attributes.required_imports,
+                    &*struct_attributes.consumer_imports,
+                    &*struct_attributes.ffi_mod_imports,
                     struct_attributes.forbid_memberwise_init,
-                    &out_dir,
-                )
+                );
+                (&ConsumerStruct::from(&ffi)).write_output(&out_dir);
+                ffi.into()
             },
         ),
         Data::Enum(data) => {
             if parsing::is_repr_c(&ast.attrs) {
-                enum_ffi::reprc(&module_name, &type_name, &out_dir)
+                let ffi = enum_ffi::reprc::EnumFFI::new(&module_name, &type_name);
+                (&consumer_enum::ReprCConsumerEnum::from(&ffi)).write_output(&out_dir);
+                ffi.into()
             } else {
-                enum_ffi::complex(
+                let ffi: enum_ffi::complex::EnumFFI<'_> = enum_ffi::complex::EnumFFI::new(
                     &module_name,
                     &type_name,
                     data,
                     &*struct_attributes.alias_modules,
-                    &*struct_attributes.required_imports,
-                    &out_dir,
-                )
+                    &*struct_attributes.consumer_imports,
+                    &*struct_attributes.ffi_mod_imports,
+                );
+                (&consumer_enum::ComplexConsumerEnum::from(&ffi)).write_output(&out_dir);
+                proc_macro2::TokenStream::from(ffi)
             }
         }
         Data::Union(_) => abort!(type_name.span(), "Unions are not supported"),

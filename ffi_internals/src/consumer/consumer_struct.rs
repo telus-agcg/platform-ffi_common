@@ -9,8 +9,6 @@ use crate::{consumer::ConsumerType, syn::Path};
 mod custom;
 mod standard;
 
-pub use custom::ConsumerStructInputs as CustomConsumerStructInputs;
-
 /// Contains the data required to generate a consumer type, and associated functions for doing so.
 ///
 pub struct ConsumerStruct {
@@ -19,7 +17,7 @@ pub struct ConsumerStruct {
     pub type_name: String,
     /// Additional imports that this type requires.
     ///
-    required_imports: Vec<Path>,
+    pub consumer_imports: Vec<Path>,
     /// The arguments for the consumer type's initializer.
     ///
     consumer_init_args: String,
@@ -108,6 +106,10 @@ impl ConsumerStruct {
 }
 
 impl ConsumerType for ConsumerStruct {
+    fn type_name(&self) -> String {
+        self.type_name.clone()
+    }
+
     /// Generates a wrapper for a struct so that the native interface in the consumer's language
     /// correctly wraps the generated FFI module.
     ///
@@ -134,27 +136,6 @@ public final class {class} {{
             init_impl = self.init_impl(),
             free_fn_name = self.free_fn_name,
             getters = self.consumer_getters
-        )
-    }
-
-    fn ffi_array_impl(&self) -> String {
-        format!(
-            "
-extension {array_name}: FFIArray {{
-    public typealias Value = OpaquePointer?
-
-    public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
-        {array_init}(ptr, len)
-    }}
-
-    public static func free(_ array: Self) {{
-        {array_free}(array)
-    }}
-}}
-",
-            array_name = self.array_name(),
-            array_init = self.array_init(),
-            array_free = self.array_free(),
         )
     }
 
@@ -185,6 +166,39 @@ extension {}: NativeData {{
 }}
 ",
             self.type_name, self.clone_fn_name,
+        )
+    }
+
+    fn ffi_array_impl(&self) -> String {
+        format!(
+            "
+extension {array_name}: FFIArray {{
+    public typealias Value = OpaquePointer?
+
+    public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
+        {array_init}(ptr, len)
+    }}
+
+    public static func free(_ array: Self) {{
+        {array_free}(array)
+    }}
+}}
+",
+            array_name = self.array_name(),
+            array_init = self.array_init(),
+            array_free = self.array_free(),
+        )
+    }
+
+    fn native_array_data_impl(&self) -> String {
+        format!(
+            "
+extension {}: NativeArrayData {{
+    public typealias FFIArrayType = {}
+}}
+",
+            self.type_name,
+            self.array_name()
         )
     }
 
@@ -222,19 +236,7 @@ public extension Optional where Wrapped == {} {{
         )
     }
 
-    fn native_array_data_impl(&self) -> String {
-        format!(
-            "
-extension {}: NativeArrayData {{
-    public typealias FFIArrayType = {}
-}}
-",
-            self.type_name,
-            self.array_name()
-        )
-    }
-
-    fn required_imports(&self) -> &[Path] {
-        &*self.required_imports
+    fn consumer_imports(&self) -> &[Path] {
+        &*self.consumer_imports
     }
 }

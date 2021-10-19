@@ -116,6 +116,10 @@ fn write_primitive_conformances(consumer_dir: &str) -> Result<(), std::io::Error
 /// Describes the behaviors required for generating a consumer type.
 ///
 pub trait ConsumerType {
+    /// The name of this type (used for generating the consumer file name).
+    ///
+    fn type_name(&self) -> String;
+
     /// The type definition.
     ///
     fn type_definition(&self) -> String;
@@ -137,7 +141,7 @@ pub trait ConsumerType {
 
     /// Additional imports for the consumer side that this type requires.
     ///
-    fn required_imports(&self) -> &[syn::Path];
+    fn consumer_imports(&self) -> &[syn::Path];
 }
 
 /// Helper for turning any type that implements `ConsumerType` into an output `String`.
@@ -149,23 +153,26 @@ pub trait ConsumerType {
 pub trait ConsumerOutput {
     /// The `String` to write to a file that defines this type and its behaviors for the consumer.
     ///
-    fn output(&self) -> String;
+    fn write_output(&self, out_dir: &str);
 }
 
 impl<C> ConsumerOutput for &C
 where
     C: ConsumerType,
 {
-    fn output(&self) -> String {
-        [
-            header_and_imports(self.required_imports()),
+    fn write_output(&self, out_dir: &str) {
+        let contents = [
+            header_and_imports(self.consumer_imports()),
             self.type_definition(),
             self.native_data_impl(),
             self.ffi_array_impl(),
             self.native_array_data_impl(),
             self.option_impl(),
         ]
-        .join("")
+        .join("");
+        let file_name = format!("{}.swift", self.type_name());
+        crate::write_consumer_file(&file_name, contents, out_dir)
+            .unwrap_or_else(|err| proc_macro_error::abort!("Error writing consumer file: {}", err));
     }
 }
 

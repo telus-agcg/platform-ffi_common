@@ -1,7 +1,12 @@
+//!
+//! Contains structures describing a complex (i.e., non-repr(C)) enum, and implementations for
+//! building the wrapping consumer implementation.
+//!
+
 use super::{CommonConsumerNames, ConsumerEnumType};
 use crate::{
     consumer::{ConsumerType, TAB_SIZE},
-    struct_internals::enum_ffi::EnumFFI,
+    items::enum_ffi::complex::EnumFFI,
     syn::Ident,
 };
 use heck::MixedCase;
@@ -13,17 +18,14 @@ pub struct ComplexConsumerEnum<'a> {
     enum_ffi: &'a EnumFFI<'a>,
 }
 
-impl<'a> ComplexConsumerEnum<'a> {
-    /// Constructor for `ComplexConsumerEnum`.
-    ///
-    #[must_use]
-    pub const fn new(enum_ffi: &'a EnumFFI<'_>) -> Self {
-        ComplexConsumerEnum { enum_ffi }
+impl<'a> From<&'a EnumFFI<'a>> for ComplexConsumerEnum<'a> {
+    fn from(ffi: &'a EnumFFI<'a>) -> Self {
+        Self { enum_ffi: ffi }
     }
 }
 
 impl ConsumerEnumType for ComplexConsumerEnum<'_> {
-    fn type_name(&self) -> &Ident {
+    fn type_name_ident(&self) -> &Ident {
         self.enum_ffi.type_name
     }
 }
@@ -46,7 +48,11 @@ impl ComplexConsumerEnum<'_> {
                 let associated_values = if field_types.is_empty() {
                     String::default()
                 } else {
-                    format!("({}.FFI, {})", self.type_name(), field_types.join(", "))
+                    format!(
+                        "({}.FFI, {})",
+                        self.type_name_ident(),
+                        field_types.join(", ")
+                    )
                 };
                 format!(
                     "{spacer:l1$}case {ident}{associated_values}",
@@ -173,7 +179,7 @@ extension {type_name}: NativeEnum {{
                     l2 = TAB_SIZE * 2,
                     arguments = arguments,
                     consumer_variant_name = variant.ident.to_string().to_mixed_case(),
-                    variant_init_fn_name = variant.init_fn_name(self.type_name()),
+                    variant_init_fn_name = variant.init_fn_name(self.type_name_ident()),
                     conversions = conversions,
                 )
             })
@@ -239,6 +245,10 @@ extension {type_name}: NativeEnum {{
 }
 
 impl ConsumerType for ComplexConsumerEnum<'_> {
+    fn type_name(&self) -> String {
+        self.type_name_ident().to_string()
+    }
+
     fn type_definition(&self) -> String {
         format!(
             r#"
@@ -436,8 +446,8 @@ public extension Optional where Wrapped == {type_name} {{
         )
     }
 
-    fn required_imports(&self) -> &[syn::Path] {
-        self.enum_ffi.required_imports
+    fn consumer_imports(&self) -> &[syn::Path] {
+        self.enum_ffi.consumer_imports
     }
 }
 
@@ -449,12 +459,12 @@ mod tests {
     mod utilities {
         use super::*;
         use crate::{
-            parsing::FieldAttributes,
-            quote::format_ident,
-            struct_internals::{
-                enum_ffi::VariantFFI,
+            items::{
+                enum_ffi::complex::VariantFFI,
                 field_ffi::{FieldFFI, FieldIdent, FieldSource},
             },
+            parsing::FieldAttributes,
+            quote::format_ident,
             type_ffi::{TypeFFI, TypeIdentifier},
         };
 
@@ -534,7 +544,8 @@ mod tests {
                     },
                 ],
                 alias_modules: &[],
-                required_imports: &[],
+                consumer_imports: &[],
+                ffi_mod_imports: &[],
             }
         }
     }

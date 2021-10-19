@@ -11,7 +11,7 @@ pub use complex_enum::ComplexConsumerEnum;
 pub use repr_c_enum::ReprCConsumerEnum;
 
 trait ConsumerEnumType {
-    fn type_name(&self) -> &Ident;
+    fn type_name_ident(&self) -> &Ident;
 }
 
 trait CommonConsumerNames {
@@ -24,22 +24,22 @@ trait CommonConsumerNames {
 
 impl<T: ConsumerEnumType> CommonConsumerNames for T {
     fn array_name(&self) -> String {
-        format!("FFIArray{}", self.type_name())
+        format!("FFIArray{}", self.type_name_ident())
     }
 
     fn array_init_fn_name(&self) -> String {
-        format!("ffi_array_{}_init", self.type_name())
+        format!("ffi_array_{}_init", self.type_name_ident())
     }
 
     fn array_free_fn_name(&self) -> String {
-        format!("ffi_array_{}_free", self.type_name())
+        format!("ffi_array_{}_free", self.type_name_ident())
     }
 
     fn option_init_fn_name(&self) -> String {
-        format!("option_{}_init", self.type_name())
+        format!("option_{}_init", self.type_name_ident())
     }
 
     fn option_free_fn_name(&self) -> String {
-        format!("option_{}_free", self.type_name())
+        format!("option_{}_free", self.type_name_ident())
     }
 }

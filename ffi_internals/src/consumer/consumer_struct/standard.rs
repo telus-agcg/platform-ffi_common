@@ -1,6 +1,6 @@
 use crate::{
     consumer::{consumer_struct::ConsumerStruct, TAB_SIZE},
-    struct_internals::struct_ffi::StructFFI,
+    items::struct_ffi::standard,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -10,7 +10,7 @@ struct ExpandedFields {
     consumer_getters: String,
 }
 
-impl StructFFI<'_> {
+impl standard::StructFFI<'_> {
     /// Expands this struct's fields to their corresponding consumer initializer arguments, FFI
     /// initializer arguments, and consumer getters.
     ///
@@ -78,12 +78,12 @@ impl StructFFI<'_> {
     }
 }
 
-impl From<&StructFFI<'_>> for ConsumerStruct {
-    fn from(struct_ffi: &StructFFI<'_>) -> Self {
+impl From<&standard::StructFFI<'_>> for ConsumerStruct {
+    fn from(struct_ffi: &standard::StructFFI<'_>) -> Self {
         let expanded_fields = struct_ffi.expand_fields();
         Self {
             type_name: struct_ffi.name.to_string(),
-            required_imports: struct_ffi.required_imports.clone(),
+            consumer_imports: struct_ffi.consumer_imports.to_owned(),
             consumer_init_args: expanded_fields.consumer_init_args,
             ffi_init_args: expanded_fields.ffi_init_args,
             consumer_getters: expanded_fields.consumer_getters,

@@ -16,9 +16,12 @@ pub struct StructAttributes {
     /// `struct_ffi::standard`.
     ///
     pub custom_attributes: Option<CustomAttributes>,
-    /// Any imports that need to be included in the generated FFI module.
+    /// Paths that need to be imported into the consumer module.
     ///
-    pub required_imports: Vec<Path>,
+    pub consumer_imports: Vec<Path>,
+    /// Paths that need to be imported into the FFI module.
+    ///
+    pub ffi_mod_imports: Vec<Path>,
     /// If true, do not generate a memberwise initializer for this type. Some types only allow
     /// construction via specific APIs that implemenat additional checks; in those cases, a
     /// generated memberwise init bypasses those restrictions.
@@ -46,7 +49,8 @@ impl From<&[Attribute]> for StructAttributes {
     fn from(attrs: &[Attribute]) -> Self {
         let mut alias_modules = vec![];
         let mut custom_attributes: Option<CustomAttributes> = None;
-        let mut required_imports = vec![];
+        let mut consumer_imports = vec![];
+        let mut ffi_mod_imports = vec![];
         let mut forbid_memberwise_init = false;
         for meta_item in attrs.iter().flat_map(super::parse_ffi_meta) {
             match &meta_item {
@@ -60,8 +64,15 @@ impl From<&[Attribute]> for StructAttributes {
                 NestedMeta::Meta(Meta::List(l)) if l.path.is_ident("alias_modules") => {
                     alias_modules.extend(l.nested.iter().flat_map(get_modules_from_meta));
                 }
-                NestedMeta::Meta(Meta::List(l)) if l.path.is_ident("required_imports") => {
-                    required_imports.extend(
+                NestedMeta::Meta(Meta::List(l)) if l.path.is_ident("consumer_imports") => {
+                    consumer_imports.extend(
+                        l.nested
+                            .iter()
+                            .filter_map(super::parse_path_from_nested_meta),
+                    );
+                }
+                NestedMeta::Meta(Meta::List(l)) if l.path.is_ident("ffi_mod_imports") => {
+                    ffi_mod_imports.extend(
                         l.nested
                             .iter()
                             .filter_map(super::parse_path_from_nested_meta),
@@ -85,14 +96,15 @@ impl From<&[Attribute]> for StructAttributes {
                     forbid_memberwise_init = true;
                 }
                 other => {
-                    proc_macro_error::abort!(other.span(), "Unsupported ffi attribute -- only `custom`, `alias_modules`, `required_imports`, `failable_init`, `failable_fns`, and `forbid_memberwise_init` are allowed in this position.");
+                    proc_macro_error::abort!(other.span(), "Unsupported ffi attribute -- only `custom`, `alias_modules`, `consumer_imports`, `ffi_mod_imports`, `failable_init`, `failable_fns`, and `forbid_memberwise_init` are allowed in this position.");
                 }
             }
         }
         Self {
             alias_modules,
             custom_attributes,
-            required_imports,
+            consumer_imports,
+            ffi_mod_imports,
             forbid_memberwise_init,
         }
     }
