@@ -388,7 +388,7 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
                     forbid_memberwise_init: struct_attributes.forbid_memberwise_init,
                 });
                 (&ConsumerStruct::from(&ffi)).write_output(&out_dir);
-                ffi.into()
+                proc_macro2::TokenStream::from(ffi)
             },
             |custom_attributes| {
                 let ffi = custom::StructFFI::new(
@@ -401,7 +401,7 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
                     struct_attributes.forbid_memberwise_init,
                 );
                 (&ConsumerStruct::from(&ffi)).write_output(&out_dir);
-                ffi.into()
+                proc_macro2::TokenStream::from(ffi)
             },
         ),
         Data::Enum(data) => {
