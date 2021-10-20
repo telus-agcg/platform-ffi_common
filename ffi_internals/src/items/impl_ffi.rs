@@ -168,6 +168,7 @@ impl ImplFFI {
             stream
         });
         quote! {
+            #[allow(box_pointers, missing_docs)]
             pub mod #mod_name {
                 use super::*;
                 #imports

@@ -242,7 +242,7 @@ impl<'a> From<EnumFFI<'_>> for TokenStream {
             .collect();
 
         quote! {
-            #[allow(missing_docs)]
+            #[allow(box_pointers, missing_docs)]
             pub mod #module_name {
                 use ffi_common::core::{error, paste, declare_opaque_type_ffi};
                 use std::any::Any;
