@@ -11,6 +11,9 @@ struct InitArgs {
     ffi: String,
 }
 
+// This implements some additional consumer-related behavior for the type from
+// `items::struct_ffi::custom` so that we can keep all of the consumer-related code isolated to the
+// `ffi_internals::consumer` module.
 impl custom::StructFFI<'_> {
     fn consumer_getters(&self) -> String {
         let type_prefix = format!("get_{}_", self.type_name);

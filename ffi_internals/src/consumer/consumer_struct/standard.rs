@@ -10,6 +10,9 @@ struct ExpandedFields {
     consumer_getters: String,
 }
 
+// This implements some additional consumer-related behavior for the type from
+// `items::struct_ffi::standard` so that we can keep all of the consumer-related code isolated to 
+// the `ffi_internals::consumer` module.
 impl standard::StructFFI<'_> {
     /// Expands this struct's fields to their corresponding consumer initializer arguments, FFI
     /// initializer arguments, and consumer getters.
