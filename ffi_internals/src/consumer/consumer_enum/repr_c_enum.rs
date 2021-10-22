@@ -1,8 +1,14 @@
+//!
+//! Contains structures describing a repr(C) enum, and implementations for building the wrapping
+//! consumer implementation.
+//!
+
 use crate::{
     consumer::{
         consumer_enum::{CommonConsumerNames, ConsumerEnumType},
         ConsumerType,
     },
+    items::enum_ffi::reprc,
     syn::Ident,
 };
 
@@ -23,12 +29,16 @@ impl<'a> ReprCConsumerEnum<'a> {
 }
 
 impl ConsumerEnumType for ReprCConsumerEnum<'_> {
-    fn type_name(&self) -> &Ident {
+    fn type_name_ident(&self) -> &Ident {
         self.ident
     }
 }
 
 impl ConsumerType for ReprCConsumerEnum<'_> {
+    fn type_name(&self) -> String {
+        self.type_name_ident().to_string()
+    }
+
     fn type_definition(&self) -> String {
         // There's no type definition for repr(C) enums; instead, we extend the FFI enum since it's
         // usable as-is.
@@ -54,7 +64,7 @@ extension {type_name}: NativeData {{
     }}
 }}
 ",
-            type_name = self.type_name(),
+            type_name = self.type_name_ident(),
         )
     }
 
@@ -74,7 +84,7 @@ extension {array_name}: FFIArray {{
 }}
 ",
             array_name = self.array_name(),
-            type_name = self.type_name(),
+            type_name = self.type_name_ident(),
             array_init_fn_name = self.array_init_fn_name(),
             array_free_fn_name = self.array_free_fn_name(),
         )
@@ -87,7 +97,7 @@ extension {type_name}: NativeArrayData {{
     public typealias FFIArrayType = {array_name}
 }}
 ",
-            type_name = self.type_name(),
+            type_name = self.type_name_ident(),
             array_name = self.array_name(),
         )
     }
@@ -130,14 +140,22 @@ public extension Optional where Wrapped == {type_name} {{
     }}
 }}
 ",
-            type_name = self.type_name(),
+            type_name = self.type_name_ident(),
             option_init_fn_name = self.option_init_fn_name(),
             option_free_fn_name = self.option_free_fn_name(),
         )
     }
 
-    fn required_imports(&self) -> &[syn::Path] {
+    fn consumer_imports(&self) -> &[syn::Path] {
         &[]
+    }
+}
+
+impl<'a> From<&reprc::EnumFFI<'a>> for ReprCConsumerEnum<'a> {
+    fn from(ffi: &reprc::EnumFFI<'a>) -> Self {
+        Self {
+            ident: ffi.type_name,
+        }
     }
 }
 

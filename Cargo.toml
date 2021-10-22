@@ -3,7 +3,7 @@ members = [
     "ffi_common",
     "ffi_core",
     "ffi_derive",
-    "ffi_internals"
+    "ffi_internals",
 ]
 
 [patch."agrian-registry".ffi_common]

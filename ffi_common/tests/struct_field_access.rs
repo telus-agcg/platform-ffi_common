@@ -23,9 +23,8 @@ impl Default for TestEnum {
     }
 }
 
-use crate::test_enum_ffi::FFIArrayTestEnum;
-
 #[derive(Debug, Clone, derive::FFI)]
+#[ffi(ffi_mod_imports(test_enum_ffi::FFIArrayTestEnum))]
 pub struct TestStruct {
     string: String,
     i32_collection: Vec<i32>,

@@ -4,7 +4,7 @@
 
 use crate::{
     heck::MixedCase,
-    impl_internals::fn_ffi::{FnFFI, FnReceiver},
+    items::fn_ffi::{FnFFI, FnReceiver},
     syn::Ident,
 };
 

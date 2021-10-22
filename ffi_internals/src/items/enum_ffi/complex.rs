@@ -1,13 +1,13 @@
 //!
-//! Contains structures describing an enum, and implementations for building the related FFI and
-//! consumer implementations.
+//! Contains structures describing a complex (i.e., non-repr(C)) enum, and implementations for
+//! building the related FFI.
 //!
 
-use super::field_ffi::FieldFFI;
+use crate::items::field_ffi::FieldFFI;
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Ident, Path};
+use syn::{DataEnum, Ident, Path};
 
 /// Describes a variant of an enum.
 ///
@@ -60,12 +60,67 @@ pub struct EnumFFI<'a> {
     ///
     pub alias_modules: &'a [String],
 
-    /// Any imports that need to be included in the generated FFI module.
+    /// Paths that need to be imported into the consumer module.
     ///
-    pub required_imports: &'a [Path],
+    pub consumer_imports: &'a [Path],
+
+    /// Paths that need to be imported into the FFI module.
+    ///
+    pub ffi_mod_imports: &'a [Path],
 }
 
 impl<'a> EnumFFI<'a> {
+    /// Create a new `EnumFFI` from derive macro inputs.
+    ///
+    #[must_use]
+    pub fn new(
+        module_name: &'a Ident,
+        type_name: &'a Ident,
+        derive: &'a DataEnum,
+        alias_modules: &'a [String],
+        consumer_imports: &'a [Path],
+        ffi_mod_imports: &'a [Path],
+    ) -> Self {
+        let variants = derive
+            .variants
+            .iter()
+            .map(|variant| {
+                let other_variants = derive
+                    .variants
+                    .iter()
+                    .cloned()
+                    .filter_map(|other_variant| {
+                        if &other_variant == variant {
+                            None
+                        } else {
+                            Some((other_variant.ident, other_variant.fields.len()))
+                        }
+                    })
+                    .collect();
+                let fields = crate::items::field_ffi::fields_for_variant(
+                    type_name,
+                    alias_modules,
+                    &variant.ident,
+                    &variant.fields,
+                    other_variants,
+                );
+                VariantFFI {
+                    ident: &variant.ident,
+                    fields,
+                }
+            })
+            .collect();
+
+        Self {
+            module_name,
+            type_name,
+            variants,
+            alias_modules,
+            consumer_imports,
+            ffi_mod_imports,
+        }
+    }
+
     /// The name of the Rust type's free function.
     ///
     #[must_use]
@@ -180,11 +235,18 @@ impl<'a> From<EnumFFI<'_>> for TokenStream {
             acc
         });
 
+        let ffi_mod_imports: Vec<Self> = enum_ffi
+            .ffi_mod_imports
+            .iter()
+            .map(|import| quote!(use #import;))
+            .collect();
+
         quote! {
-            #[allow(missing_docs)]
+            #[allow(box_pointers, missing_docs)]
             pub mod #module_name {
                 use ffi_common::core::{error, paste, declare_opaque_type_ffi};
                 use std::any::Any;
+                #(#ffi_mod_imports)*
                 use super::*;
 
                 #[derive(Debug, Clone, Copy, PartialEq, ffi_common::derive::FFI)]

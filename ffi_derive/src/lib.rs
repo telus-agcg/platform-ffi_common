@@ -222,11 +222,11 @@
 //! crates into multiple consumer frameworks. This lets them mirror the crate structure instead of
 //! having a single monolithic framework interface. To support that, `ffi_derive` needs to know
 //! which remote types need to be imported for the consumer code. This can be expressed with the
-//! `required_imports` attribute. For example:
+//! `consumer_imports` attribute. For example:
 //! ```ignore
 //! use other_crate::module::OtherType;
 //!
-//! #[derive(ffi_derive::FFI), ffi(required_imports(other_crate::module::OtherType))]
+//! #[derive(ffi_derive::FFI), ffi(consumer_imports(other_crate::module::OtherType))]
 //! pub struct SomeType {
 //!     pub field: OtherType
 //! }
@@ -291,15 +291,15 @@
     variant_size_differences
 )]
 
-mod enum_ffi;
-mod struct_ffi;
-
 use ffi_internals::{
     alias_resolution,
+    consumer::{consumer_enum, consumer_struct::ConsumerStruct, ConsumerOutput},
     heck::SnakeCase,
-    impl_internals::{
+    items::{
+        enum_ffi,
         fn_ffi::FnFFI,
         impl_ffi::{ImplFFI, ImplInputs},
+        struct_ffi::{custom, standard},
     },
     parsing,
     quote::{format_ident, ToTokens},
@@ -312,6 +312,44 @@ use proc_macro::TokenStream;
 use proc_macro_error::{abort, proc_macro_error};
 
 /// Derive an FFI for a native type definition.
+///
+/// # Supported Attributes
+///
+/// The following attributes can be specified with the `ffi` helper attribute when using this derive
+/// macro, as in `#[derive(ffi_derive::FFI), ffi(attribute1(args), attribute2)]`.
+///
+/// ## Struct
+///
+/// - *alias_modules*: A list of modules that contain aliases referenced by this type, as in
+/// `ffi(alias_modules(some_module_name, some_other_module_name))`. Note that this must be the name
+/// used when the `alias_resolution` macro was invoked on the module containing aliases, as in
+/// `ffi_common::derive::alias_resolution(some_module_name)`.
+/// - *forbid_memberwise_init*: This attribute takes no arguments; instead, its presence indicates
+/// that we should not generate a memberwise initializer for this type. Usage looks like
+/// `ffi(forbid_memberwise_init)`.
+/// - *consumer_imports*: A list of paths to be imported into the consumer type definition. These
+/// should be absolute paths to remote crates; the goal here is to let the consumer set up
+/// frameworks that mirror the crate structure, which means they'll sometimes need to specify that a
+/// type needs to be imported from some other framework. This looks like
+/// `ffi(consumer_imports(remote_crate::module::Type))`.
+/// - *ffi_mod_imports*: A list of absolute paths to be imported in the FFI module, as in
+/// `ffi(ffi_mod_imports(crate::module::nested_module::Type))`. This does not need to include paths
+/// that are already in scope at the level where this type is defined; those will be imported into
+/// the FFI module automatically.
+///
+/// # Fields
+///
+/// ## Custom Struct
+///
+/// The following additional attributes are valid for structs with a manually implemented FFI:
+///
+/// - *custom*: The filepath (relative to the crate's root) to the file containing the FFI
+/// implementation for the struct, as in `ffi(custom = "src/directory/file.rs")`.
+/// - *failable_fns*: A collection of paths to functions that can fail (i.e., return a `Result`), as
+/// in `ffi(failable_fns(module1::fn1, module2::fn2))`.
+/// - *failable_init*: This attribute takes no arguments; instead, its presence indicates that the
+/// initializer for this struct is failable (i.e., returns a `Result`). Usage looks like
+/// `ffi(failable_init)`.
 ///
 /// # Proc Macro Errors
 ///
@@ -340,38 +378,48 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
     match &ast.data {
         Data::Struct(data) => struct_attributes.custom_attributes.as_ref().map_or_else(
             || {
-                struct_ffi::standard(
-                    &module_name,
-                    &type_name,
+                let ffi = standard::StructFFI::from(&standard::StructInputs {
+                    module_name: &module_name,
+                    type_name: &type_name,
                     data,
-                    &*struct_attributes.alias_modules,
-                    &*struct_attributes.required_imports,
-                    &out_dir,
-                )
+                    alias_modules: &*struct_attributes.alias_modules,
+                    consumer_imports: &struct_attributes.consumer_imports,
+                    ffi_mod_imports: &struct_attributes.ffi_mod_imports,
+                    forbid_memberwise_init: struct_attributes.forbid_memberwise_init,
+                });
+                (&ConsumerStruct::from(&ffi)).write_output(&out_dir);
+                proc_macro2::TokenStream::from(ffi)
             },
             |custom_attributes| {
-                struct_ffi::custom(
+                let ffi = custom::StructFFI::new(
                     &type_name,
                     &module_name,
                     &crate_root,
                     custom_attributes,
-                    &struct_attributes.required_imports,
-                    &out_dir,
-                )
+                    &*struct_attributes.consumer_imports,
+                    &*struct_attributes.ffi_mod_imports,
+                    struct_attributes.forbid_memberwise_init,
+                );
+                (&ConsumerStruct::from(&ffi)).write_output(&out_dir);
+                proc_macro2::TokenStream::from(ffi)
             },
         ),
         Data::Enum(data) => {
             if parsing::is_repr_c(&ast.attrs) {
-                enum_ffi::reprc(&module_name, &type_name, &out_dir)
+                let ffi = enum_ffi::reprc::EnumFFI::new(&module_name, &type_name);
+                (&consumer_enum::ReprCConsumerEnum::from(&ffi)).write_output(&out_dir);
+                ffi.into()
             } else {
-                enum_ffi::complex(
+                let ffi: enum_ffi::complex::EnumFFI<'_> = enum_ffi::complex::EnumFFI::new(
                     &module_name,
                     &type_name,
                     data,
                     &*struct_attributes.alias_modules,
-                    &*struct_attributes.required_imports,
-                    &out_dir,
-                )
+                    &*struct_attributes.consumer_imports,
+                    &*struct_attributes.ffi_mod_imports,
+                );
+                (&consumer_enum::ComplexConsumerEnum::from(&ffi)).write_output(&out_dir);
+                proc_macro2::TokenStream::from(ffi)
             }
         }
         Data::Union(_) => abort!(type_name.span(), "Unions are not supported"),
@@ -407,6 +455,27 @@ pub fn alias_resolution(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Parses an impl and produces a module exposing that impl's functions over FFI.
 ///
+/// # Attributes
+///
+/// The following attributes can be specified when using this attribute macro, as in
+/// `#[ffi_derive::expose_impl(attribute1(args), attribute2)]`.
+///
+/// - *description*: A descriptive name for this impl, which will be combined with the name of the
+/// type to uniquely identify the generated module/consumer file. If you're using this macro with an
+/// impl for a type like `impl SomeType { ... }`, this attribute is *required*. If you're using this
+/// macro when  implementing a trait for a type like `impl SomeTrait for SomeType`, this attribute
+/// is optional  (we'll fall back to the trait name for unique naming). This looks like
+/// `description("some_description")`.
+/// - *ffi_imports*: A list of absolute paths to be imported in the FFI module, as in
+/// `ffi_imports(crate::module::nested_module::Type)`.
+/// - *consumer_imports*: A list of absolute paths of types that need to be imported in the consumer
+/// module, as in `consumer_imports(crate::module::Type)`.
+/// - *generic*: A list of generic parameters used in this impl and the concrete types to use for the
+/// generated FFI. This looks like `generic(T="ConcreteType")`.
+/// - *raw_types*: A list of types that should be exposed directly through the FFI when referenced in
+/// this impl. Generally this should just be types that are `repr(C)`. This looks like
+/// `raw_types(Type)`.
+///
 /// # Proc Macro Errors
 ///
 /// Fails if invoked on an unsupported impl, such as: one that doesn't implement a trait, one
@@ -420,17 +489,28 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
     let impl_attributes = parsing::ImplAttributes::from(args);
     let item_impl = parse_macro_input!(item as ItemImpl);
 
-    let trait_name = item_impl.trait_.as_ref().map_or_else(
-        || abort!(item_impl.span(), "No trait info found"),
-        |t| t.1.segments.last().unwrap().ident.clone(),
-    );
+    let impl_description = impl_attributes.description.unwrap_or_else(|| {
+        item_impl.trait_.as_ref().map_or_else(
+            || abort!(item_impl.span(), "No trait info found"),
+            |t| t.1.segments.last().unwrap().ident.clone(),
+        )
+    });
     let type_name = if let Type::Path(ty) = &*item_impl.self_ty {
         ty.path.segments.last().unwrap().ident.clone()
     } else if let Type::Reference(r) = &*item_impl.self_ty {
         if let Type::Path(ty) = &*r.elem {
             ty.path.segments.last().unwrap().ident.clone()
         } else {
-            abort!(r.span(), "Could not find self type for impl");
+            abort!(
+                r.span(),
+                "Could not find self type for impl in Type::Reference"
+            );
+        }
+    } else if let Type::Group(g) = &*item_impl.self_ty {
+        if let Type::Path(ty) = &*g.elem {
+            ty.path.segments.last().unwrap().ident.clone()
+        } else {
+            abort!(g.span(), "Could not find self type for impl in Type::Group");
         }
     } else {
         abort!(
@@ -444,7 +524,8 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         ffi_imports: impl_attributes.ffi_imports,
         consumer_imports: impl_attributes.consumer_imports,
         raw_types: impl_attributes.raw_types,
-        trait_name,
+        generics: impl_attributes.generics,
+        impl_description,
         type_name,
     });
     let out_dir = out_dir();
@@ -464,6 +545,21 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
 
 /// Parses a fn and produces a module exposing that function over FFI.
 ///
+/// # Attributes
+///
+/// The following attributes can be specified when using this attribute macro, as in
+/// `#[ffi_derive::expose_fn(attribute1(args), attribute2)]`.
+///
+/// - *generic*: A list of generic parameters used in this impl and the concrete types to use for the
+/// generated FFI. This looks like `generic(T="ConcreteType")`.
+/// - *extend_type*: The type to extend on the consumer with this function. We don't currently support
+/// generating global consumer functions, so `extend_type` is used to associate this behavior with
+/// that type. This is *also* used as the type of `Self` when necessary. This looks like
+/// `extend_type(Type)`.
+/// - *raw_types*: A list of types that should be exposed directly through the FFI when referenced in
+/// this impl. Generally this should just be types that are `repr(C)`. This looks like
+/// `raw_types(Type)`.
+///
 #[proc_macro_attribute]
 #[proc_macro_error]
 pub fn expose_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
@@ -471,7 +567,7 @@ pub fn expose_fn(attr: TokenStream, item: TokenStream) -> TokenStream {
     let fn_attributes = parsing::FnAttributes::from(args);
     let item_fn = ffi_internals::syn::parse_macro_input!(item as ItemFn);
 
-    let fn_ffi = FnFFI::from((&item_fn, fn_attributes.raw_types));
+    let fn_ffi = FnFFI::from((&item_fn, &fn_attributes));
     let module_name = format_ident!("{}_ffi", item_fn.sig.ident);
     let file_name = [&module_name.to_string(), ".swift"].join("");
     let out_dir = out_dir();

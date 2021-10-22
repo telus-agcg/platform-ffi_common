@@ -3,14 +3,14 @@
 //! consumer implementations.
 //!
 
-use crate::struct_internals::field_ffi::{FieldFFI, FieldSource};
+use crate::items::field_ffi::{FieldFFI, FieldSource};
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
 use syn::{spanned::Spanned, Fields, Ident, Path};
 
-/// Represents the components of a struct for generating an FFI.
+/// Represents the components of a struct for generating a standard derived FFI.
 ///
 pub struct StructFFI<'a> {
     /// The identifier for the FFI module to be generated.
@@ -19,12 +19,20 @@ pub struct StructFFI<'a> {
     /// The name of the struct.
     ///
     pub name: &'a Ident,
-    /// Any imports that need to be included in the generated FFI module.
+    /// Paths that need to be imported into the consumer module.
     ///
-    pub required_imports: Vec<Path>,
+    pub consumer_imports: &'a [Path],
+    /// Paths that need to be imported into the FFI module.
+    ///
+    pub ffi_mod_imports: &'a [Path],
     /// The generated FFI for each of this struct's fields.
     ///
     pub fields: Vec<FieldFFI<'a>>,
+    /// If true, do not generate a memberwise initializer for this type. Some types only allow
+    /// construction via specific APIs that implemenat additional checks; in those cases, a
+    /// generated memberwise init bypasses those restrictions.
+    ///
+    pub forbid_memberwise_init: bool,
     /// The initializer arguments, as a `TokenStream` that we can just inject into the right place
     /// in the generated module's initializer.
     ///
@@ -65,7 +73,7 @@ impl StructFFI<'_> {
     /// Find any extra imports from `expose_as` attributes on this struct's fields, and return them
     /// as a `TokenStream`.
     ///
-    fn extra_imports(&self) -> TokenStream {
+    fn exposed_field_type_imports(&self) -> TokenStream {
         self.fields
             .as_slice()
             .iter()
@@ -94,21 +102,29 @@ pub struct StructInputs<'a> {
     /// Alias modules that are referenced by the types of this struct's fields.
     ///
     pub alias_modules: &'a [String],
-    /// Any imports that need to be included in the generated FFI module.
+    /// Paths that need to be imported into the consumer module.
     ///
-    pub required_imports: &'a [Path],
+    pub consumer_imports: &'a [Path],
+    /// Paths that need to be imported into the FFI module.
+    ///
+    pub ffi_mod_imports: &'a [Path],
+    /// If true, do not generate a memberwise initializer for this type. Some types only allow
+    /// construction via specific APIs that implemenat additional checks; in those cases, a
+    /// generated memberwise init bypasses those restrictions.
+    ///
+    pub forbid_memberwise_init: bool,
 }
 
 impl<'a> From<&StructInputs<'a>> for StructFFI<'a> {
     fn from(derive: &StructInputs<'a>) -> Self {
         let fields: Vec<FieldFFI<'_>> = match &derive.data.fields {
-            Fields::Named(fields) => super::field_ffi::field_inputs_from_named_fields(
+            Fields::Named(fields) => crate::items::field_ffi::field_inputs_from_named_fields(
                 fields,
                 &FieldSource::Struct,
                 derive.type_name,
                 derive.alias_modules,
             ),
-            Fields::Unnamed(fields) => super::field_ffi::field_inputs_from_unnamed_fields(
+            Fields::Unnamed(fields) => crate::items::field_ffi::field_inputs_from_unnamed_fields(
                 fields,
                 &FieldSource::Struct,
                 derive.type_name,
@@ -136,11 +152,13 @@ impl<'a> From<&StructInputs<'a>> for StructFFI<'a> {
         Self {
             module: derive.module_name,
             name: derive.type_name,
-            required_imports: derive.required_imports.to_owned(),
+            consumer_imports: derive.consumer_imports,
+            ffi_mod_imports: derive.ffi_mod_imports,
             fields,
             init_arguments,
             assignment_expressions,
             getter_fns,
+            forbid_memberwise_init: derive.forbid_memberwise_init,
         }
     }
 }
@@ -152,28 +170,20 @@ impl<'a> From<StructFFI<'_>> for TokenStream {
         let init_arguments = &struct_ffi.init_arguments;
         let assignment_expressions = &struct_ffi.assignment_expressions;
         let getter_fns = &struct_ffi.getter_fns;
-        let extra_imports = struct_ffi.extra_imports();
+        let exposed_field_type_imports = struct_ffi.exposed_field_type_imports();
         let free_fn_name = struct_ffi.free_fn_name();
         let init_fn_name = struct_ffi.init_fn_name();
         let clone_fn_name = struct_ffi.clone_fn_name();
+        let ffi_mod_imports: Vec<Self> = struct_ffi
+            .ffi_mod_imports
+            .iter()
+            .map(|import| quote!(use #import;))
+            .collect();
 
-        // Create a new module for the FFI for this type.
-        quote!(
-            #[allow(box_pointers, missing_docs)]
-            pub mod #module_name {
-                use ffi_common::core::{*, paste, datetime::*, string::FFIArrayString};
-                use std::os::raw::c_char;
-                use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
-                #extra_imports
-                use super::*;
-
-                #[no_mangle]
-                pub unsafe extern "C" fn #free_fn_name(data: *const #type_name) {
-                    drop(Box::from_raw(data as *mut #type_name));
-                }
-
-                declare_opaque_type_ffi! { #type_name }
-
+        let initializer = if struct_ffi.forbid_memberwise_init {
+            quote!()
+        } else {
+            quote! {
                 #[no_mangle]
                 pub unsafe extern "C" fn #init_fn_name(
                     #init_arguments
@@ -183,6 +193,28 @@ impl<'a> From<StructFFI<'_>> for TokenStream {
                     };
                     Box::into_raw(Box::new(data))
                 }
+            }
+        };
+
+        // Create a new module for the FFI for this type.
+        quote!(
+            #[allow(box_pointers, missing_docs)]
+            pub mod #module_name {
+                use ffi_common::core::{*, paste, datetime::*, string::FFIArrayString};
+                use std::os::raw::c_char;
+                use std::{ffi::{CStr, CString}, mem::ManuallyDrop, ptr};
+                #exposed_field_type_imports
+                #(#ffi_mod_imports)*
+                use super::*;
+
+                #[no_mangle]
+                pub unsafe extern "C" fn #free_fn_name(data: *const #type_name) {
+                    drop(Box::from_raw(data as *mut #type_name));
+                }
+
+                declare_opaque_type_ffi! { #type_name }
+
+                #initializer
 
                 #[no_mangle]
                 pub unsafe extern "C" fn #clone_fn_name(ptr: *const #type_name) -> *const #type_name {

@@ -10,6 +10,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Added
 
 - Add support for enums with associated values. DEV-17613.
+- New helper attributes:
+  - `description`: Names an impl so we can make the generated module and consumer file unique even
+  when it's not a trait impl.
+  - `generic`: Specifies a type to expose something as, instead of a generic.
+  - `forbid_memberwise_init`: Prevents us from generating a memberwise initializer (for cases where
+  initialization should only happen through specific APIs with extra rules).
 
 ### Changed
 
