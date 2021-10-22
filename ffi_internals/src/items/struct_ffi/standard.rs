@@ -10,7 +10,7 @@ use quote::{format_ident, quote};
 use std::collections::HashSet;
 use syn::{spanned::Spanned, Fields, Ident, Path};
 
-/// Represents the components of a struct for generating an FFI.
+/// Represents the components of a struct for generating a standard derived FFI.
 ///
 pub struct StructFFI<'a> {
     /// The identifier for the FFI module to be generated.

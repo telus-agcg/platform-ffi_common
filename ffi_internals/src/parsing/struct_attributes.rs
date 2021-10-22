@@ -96,7 +96,12 @@ impl From<&[Attribute]> for StructAttributes {
                     forbid_memberwise_init = true;
                 }
                 other => {
-                    proc_macro_error::abort!(other.span(), "Unsupported ffi attribute -- only `custom`, `alias_modules`, `consumer_imports`, `ffi_mod_imports`, `failable_init`, `failable_fns`, and `forbid_memberwise_init` are allowed in this position.");
+                    proc_macro_error::abort!(
+                        other.span(),
+                        "Unsupported ffi attribute -- only \
+`custom`, `alias_modules`, `consumer_imports`, `ffi_mod_imports`, `failable_init`, `failable_fns`, \
+and `forbid_memberwise_init` are allowed in this position."
+                    );
                 }
             }
         }

@@ -68,9 +68,6 @@ impl From<syn::AttributeArgs> for FnAttributes {
                                         path: nested_meta.path().clone(),
                                     });
                                     if let Meta::NameValue(name_value) = nested_meta {
-                                        // TODO: We could accept a list of types here to
-                                        // implement this for, making it possible to expose an
-                                        // FFI for f64, f32, etc all in one derive.
                                         if let syn::Lit::Str(lit) = name_value.lit.clone() {
                                             let ty: Type =
                                                 syn::parse_str(&lit.value()).unwrap_or_abort();

@@ -1,5 +1,6 @@
 //!
-//!
+//! Contains structures describing a struct that has a custom FFI implementation, and
+//! implementations for building boilerplate FFI support and consumer implementations.
 //!
 
 use crate::parsing::CustomAttributes;
@@ -8,7 +9,8 @@ use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use syn::{Ident, Path, Type};
 
-///
+/// Represents the components of a struct that has a custom FFI implementation (defined at
+/// `custom_attributes.path`).
 ///
 pub struct StructFFI<'a> {
     /// The name of the struct we're working with.

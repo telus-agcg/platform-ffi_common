@@ -233,11 +233,6 @@ impl FnFFI {
                 let name = arg.name.clone();
                 let ty = arg.native_type_data.ffi_type(None, Context::Argument);
                 let signature_parameter = quote!(#name: #ty, );
-                // TODO: This assumes a collection type should always be dereferenced to a slice
-                // and borrowed when passed to the native function, which is not necessarily the
-                // case. We should be able to figure that out from the syn collection types...we
-                // just need to support them more completely instead of stripping down to "is a
-                // collection".
                 let symbols = if arg.native_type_data.is_vec {
                     quote!(&*)
                 } else {

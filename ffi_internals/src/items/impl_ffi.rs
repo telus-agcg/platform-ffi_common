@@ -40,9 +40,7 @@ pub struct ImplInputs {
     /// # Limitations
     ///
     /// This breaks down if an impl contains multiple generic functions that use the same generic
-    /// parameter but need to be matched with different concrete types. If we run into that use
-    /// case, we'll need to do something else (or perhaps let the function attributes override in
-    /// those cases?).
+    /// parameter: https://github.com/agrian-inc/ffi_common/issues/27.
     ///
     pub generics: HashMap<Type, Type>,
 

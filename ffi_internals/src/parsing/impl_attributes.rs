@@ -37,9 +37,7 @@ pub struct ImplAttributes {
     /// # Limitations
     ///
     /// This breaks down if an impl contains multiple generic functions that use the same generic
-    /// parameter but need to be matched with different concrete types. If we run into that use
-    /// case, we'll need to do something else (or perhaps let the function attributes override in
-    /// those cases?).
+    /// parameter: https://github.com/agrian-inc/ffi_common/issues/27.
     ///
     pub generics: HashMap<Type, Type>,
 }
@@ -102,9 +100,6 @@ impl From<syn::AttributeArgs> for ImplAttributes {
                                     path: nested_meta.path().clone(),
                                 });
                                 if let Meta::NameValue(name_value) = nested_meta {
-                                    // TODO: We could accept a list of types here to
-                                    // implement this for, making it possible to expose an
-                                    // FFI for f64, f32, etc all in one derive.
                                     if let syn::Lit::Str(lit) = name_value.lit.clone() {
                                         let ty: Type =
                                             syn::parse_str(&lit.value()).unwrap_or_abort();
@@ -124,7 +119,8 @@ impl From<syn::AttributeArgs> for ImplAttributes {
                 } else {
                     abort!(
                         m.span(),
-                        "Unsupported ffi attribute {:?} -- expected `ffi_imports`, `consumer_imports`, `raw_types`, `description`, or `generic`, ",
+                        "Unsupported ffi attribute {:?} -- expected `ffi_imports`, \
+`consumer_imports`, `raw_types`, `description`, or `generic`, ",
                         m.path())
                 }
             } else {
