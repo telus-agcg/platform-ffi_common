@@ -7,7 +7,7 @@ use crate::items::field_ffi::FieldFFI;
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{DataEnum, Ident, Path};
+use syn::{Attribute, DataEnum, Ident, Path};
 
 /// Describes a variant of an enum.
 ///
@@ -19,6 +19,10 @@ pub struct VariantFFI<'a> {
     /// The variant's fields.
     ///
     pub fields: Vec<FieldFFI<'a>>,
+
+    /// Documentation comments on this variant.
+    ///
+    pub doc_comments: Vec<Attribute>,
 }
 
 impl<'a> VariantFFI<'a> {
@@ -67,6 +71,10 @@ pub struct EnumFFI<'a> {
     /// Paths that need to be imported into the FFI module.
     ///
     pub ffi_mod_imports: &'a [Path],
+
+    /// Documentation comments on this enum.
+    ///
+    pub doc_comments: &'a [Attribute],
 }
 
 impl<'a> EnumFFI<'a> {
@@ -80,6 +88,7 @@ impl<'a> EnumFFI<'a> {
         alias_modules: &'a [String],
         consumer_imports: &'a [Path],
         ffi_mod_imports: &'a [Path],
+        doc_comments: &'a [Attribute],
     ) -> Self {
         let variants = derive
             .variants
@@ -107,6 +116,7 @@ impl<'a> EnumFFI<'a> {
                 VariantFFI {
                     ident: &variant.ident,
                     fields,
+                    doc_comments: crate::parsing::parse_doc_comments(&*variant.attrs),
                 }
             })
             .collect();
@@ -118,6 +128,7 @@ impl<'a> EnumFFI<'a> {
             alias_modules,
             consumer_imports,
             ffi_mod_imports,
+            doc_comments,
         }
     }
 

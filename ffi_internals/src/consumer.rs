@@ -29,6 +29,8 @@
 #![allow(clippy::module_name_repetitions)]
 
 use heck::CamelCase;
+use proc_macro_error::{ResultExt, abort};
+use syn::{Attribute, spanned::Spanned};
 
 mod error;
 mod primitives_conformance;
@@ -38,7 +40,6 @@ pub mod consumer_fn;
 pub mod consumer_impl;
 pub mod consumer_struct;
 pub use error::Error;
-use quote::spanned::Spanned;
 
 /// A warning to add to the top of each file. Could add a date or customize the comment format if we
 /// ever want to.
@@ -66,6 +67,40 @@ pub fn write_consumer_foundation(consumer_dir: &str, language: &str) -> Result<(
     write_support_files(consumer_dir, language)?;
     write_primitive_conformances(consumer_dir)?;
     Ok(())
+}
+
+/// Converts a slice of doc comment attributes to a string of correctly formatted consumer comments.
+/// 
+/// `attrs` must be doc comments, or this will abort the proc macro.
+/// `indentation_level` should be the number of levels that the type on this comment is nested. It
+/// will be multiplied by `TAB_SIZE`.
+/// 
+fn consumer_docs_from(attrs: &[Attribute], indentation_level: usize) -> String {
+    let mut docs = attrs
+        .iter()
+        .filter_map(|attr| {
+            if let syn::Meta::NameValue(meta) = attr.parse_meta().expect_or_abort("Cannot parse meta for doc comment.") {
+                if let syn::Lit::Str(lit) = meta.lit {
+                    let doc = lit.value();
+                    if doc.is_empty() {
+                        return Some("\n".to_string());
+                    }
+                    return Some(doc);
+                }
+            }
+            abort!(attr.span(), "Unexpected meta for doc comment attribute.")
+        })
+        .map(|doc| format!(
+            "{spacer:length$}///{doc}",
+            spacer = " ",
+            length = TAB_SIZE * indentation_level,
+            doc = doc))
+        .collect::<Vec<String>>()
+        .join("\n");
+    if !docs.is_empty() {
+        docs.push('\n');
+    }
+    docs
 }
 
 /// Reads the protocol file for `language` and writes it to `consumer_dir/FFIProtocols.language`.
@@ -185,7 +220,7 @@ where
 fn get_segment_ident(segment: Option<&syn::PathSegment>) -> &syn::Ident {
     match segment {
         Some(segment) => &segment.ident,
-        None => proc_macro_error::abort!(segment.__span(), "Missing path segment"),
+        None => proc_macro_error::abort!(segment.span(), "Missing path segment"),
     }
 }
 

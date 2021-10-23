@@ -46,6 +46,9 @@ pub struct ConsumerStruct {
     /// generated memberwise init bypasses those restrictions.
     ///
     forbid_memberwise_init: bool,
+    /// Documentation comments on this struct.
+    ///
+    docs: String,
 }
 
 impl ConsumerStruct {
@@ -114,9 +117,9 @@ impl ConsumerType for ConsumerStruct {
     /// correctly wraps the generated FFI module.
     ///
     fn type_definition(&self) -> String {
-        format!(
-            "
-public final class {class} {{
+        let mut result = self.docs.clone();
+        result.push_str(&format!(
+"public final class {class} {{
 
     internal let pointer: OpaquePointer
 
@@ -136,7 +139,8 @@ public final class {class} {{
             init_impl = self.init_impl(),
             free_fn_name = self.free_fn_name,
             getters = self.consumer_getters
-        )
+        ));
+        result
     }
 
     fn native_data_impl(&self) -> String {

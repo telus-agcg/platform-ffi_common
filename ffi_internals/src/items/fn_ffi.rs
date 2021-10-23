@@ -11,7 +11,7 @@ use lazy_static::__Deref;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashMap;
-use syn::{spanned::Spanned, Ident, ImplItemMethod, ItemFn, PatType, Type};
+use syn::{spanned::Spanned, Attribute, Ident, ImplItemMethod, ItemFn, PatType, Type};
 
 /// Describes the various kinds of receivers we may encounter when parsing a function.
 ///
@@ -49,6 +49,10 @@ pub struct FnFFI {
 
     /// The return type for this function, if any.
     pub return_type: Option<TypeFFI>,
+
+    /// Documentation comments on this fn.
+    ///
+    pub doc_comments: Vec<Attribute>,
 }
 
 /// Representes the inputs for building a `FnFFI`.
@@ -66,6 +70,10 @@ pub struct FnFFIInputs<'a> {
     /// underlying type.
     ///
     pub local_aliases: HashMap<Ident, Type>,
+
+    /// Documentation comments on this fn that will be added to the FFI fn.
+    ///
+    pub doc_comments: Vec<Attribute>,
 }
 
 impl<'a> FnFFIInputs<'a> {
@@ -122,6 +130,7 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
             receiver,
             parameters: arguments,
             return_type,
+            doc_comments: crate::parsing::parse_doc_comments(&*inputs.method.attrs),
         }
     }
 }
@@ -174,6 +183,7 @@ impl From<(&ItemFn, &FnAttributes)> for FnFFI {
             receiver,
             parameters: arguments,
             return_type,
+            doc_comments: crate::parsing::parse_doc_comments(&*method.attrs),
         }
     }
 }
@@ -333,7 +343,9 @@ impl FnFFI {
         } else {
             quote!(#native_call(#calling_args);)
         };
+        let doc_comments = &*self.doc_comments;
         quote! {
+            #(#doc_comments)*
             #[no_mangle]
             pub unsafe extern "C" fn #ffi_fn_name(#signature_args) -> #return_type {
                 #parameter_conversions

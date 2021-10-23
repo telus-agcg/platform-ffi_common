@@ -54,13 +54,21 @@ impl ComplexConsumerEnum<'_> {
                         field_types.join(", ")
                     )
                 };
-                format!(
+                let mut result = crate::consumer::consumer_docs_from(&*variant.doc_comments, 1);
+                // let mut result = if docs.is_empty() {
+                //     String::default()
+                // } else {
+                //     docs
+                // };
+
+                result.push_str(&format!(
                     "{spacer:l1$}case {ident}{associated_values}",
                     spacer = " ",
                     l1 = TAB_SIZE,
                     ident = ident,
                     associated_values = associated_values,
-                )
+                ));
+                result
             })
             .collect::<Vec<String>>()
             .join("\n")
@@ -250,14 +258,9 @@ impl ConsumerType for ComplexConsumerEnum<'_> {
     }
 
     fn type_definition(&self) -> String {
-        format!(
+        let mut result = crate::consumer::consumer_docs_from(self.enum_ffi.doc_comments, 0);
+        result.push_str(&format!(
             r#"
-/// Doesn't require any special memory behavior; it's a swift type containing other types (and those
-/// contained types will manage their own memory as needed).
-///
-/// When accessing the associated values on this type, keep in mind that the first value is an aid
-/// for the FFI; you can safely ignore it with `_` when destructuring.
-///
 public enum {type_name} {{
 {case_definitions}
 
@@ -276,7 +279,8 @@ extension {type_name} {{
             case_inits = self.case_inits(),
             ffi_declaration = self.ffi_declaration(),
             enum_protocol_conformance = self.enum_protocol_conformance(),
-        )
+        ));
+        result
     }
 
     fn native_data_impl(&self) -> String {
@@ -516,7 +520,9 @@ mod tests {
                                 expose_as: None,
                                 raw: false,
                             },
+                            doc_comments: vec![],
                         }],
+                        doc_comments: vec![],
                     },
                     VariantFFI {
                         ident: variant_2,
@@ -540,12 +546,15 @@ mod tests {
                                 expose_as: None,
                                 raw: false,
                             },
+                            doc_comments: vec![],
                         }],
+                        doc_comments: vec![],
                     },
                 ],
                 alias_modules: &[],
                 consumer_imports: &[],
                 ffi_mod_imports: &[],
+                doc_comments: &[],
             }
         }
     }
@@ -563,12 +572,6 @@ mod tests {
         assert_eq!(
             complex_consumer_enum.type_definition(),
             r#"
-/// Doesn't require any special memory behavior; it's a swift type containing other types (and those
-/// contained types will manage their own memory as needed).
-///
-/// When accessing the associated values on this type, keep in mind that the first value is an aid
-/// for the FFI; you can safely ignore it with `_` when destructuring.
-///
 public enum TestType {
     case variant1(TestType.FFI, UInt16)
     case variant2(TestType.FFI, UInt8)

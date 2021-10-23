@@ -9,7 +9,7 @@ use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashMap;
-use syn::{Ident, ImplItem, Path, Type};
+use syn::{Attribute, Ident, ImplItem, Path, Type};
 
 /// Describes the data required to create an `ImplFFI`.
 ///
@@ -52,6 +52,10 @@ pub struct ImplInputs {
     /// The name of the type that this implementation applies to.
     ///
     pub type_name: Ident,
+
+    /// Documentation comments on this impl that will be added to the FFI module.
+    ///
+    pub doc_comments: Vec<Attribute>,
 }
 
 impl From<ImplInputs> for ImplFFI {
@@ -86,6 +90,7 @@ impl From<ImplInputs> for ImplFFI {
                         generics: inputs.generics.clone(),
                     },
                     local_aliases: aliases.clone(),
+                    doc_comments: crate::parsing::parse_doc_comments(&*item.attrs),
                 })
             })
             .collect();
@@ -96,6 +101,7 @@ impl From<ImplInputs> for ImplFFI {
             fns,
             ffi_imports: inputs.ffi_imports,
             consumer_imports: inputs.consumer_imports,
+            doc_comments: inputs.doc_comments,
         }
     }
 }
@@ -126,6 +132,10 @@ pub struct ImplFFI {
     /// Any consumer import paths specified in the attributes on the macro invocation.
     ///
     pub(crate) consumer_imports: Vec<Path>,
+
+    /// Documentation comments on this impl that will be added to the FFI module.
+    ///
+    pub(crate) doc_comments: Vec<Attribute>,
 }
 
 impl ImplFFI {
@@ -152,6 +162,7 @@ impl ImplFFI {
     ///
     #[must_use]
     pub fn generate_ffi(&self) -> TokenStream {
+        let doc_comments = &*self.doc_comments;
         let mod_name = self.module_name();
         let imports = self.ffi_imports.iter().fold(quote!(), |mut stream, path| {
             stream.extend(quote!(use #path;));
@@ -166,6 +177,7 @@ impl ImplFFI {
             stream
         });
         quote! {
+            #(#doc_comments)*
             #[allow(box_pointers, missing_docs)]
             pub mod #mod_name {
                 use super::*;

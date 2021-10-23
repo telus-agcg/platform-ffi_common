@@ -33,9 +33,12 @@ impl ImplFFI {
     ///
     #[must_use]
     fn generate_consumer(&self) -> String {
-        format!(
-            "
-public extension {native_type} {{
+        let mut result = crate::consumer::consumer_docs_from(&*self.doc_comments, 0);
+        if !result.is_empty() { 
+            result.push('\n');
+        }
+        result.push_str(&format!(
+"public extension {native_type} {{
 {functions}
 }}
 ",
@@ -46,7 +49,8 @@ public extension {native_type} {{
                 .map(|f| f.generate_consumer(&self.module_name()))
                 .collect::<Vec<String>>()
                 .join("\n"),
-        )
+        ));
+        result
     }
 }
 

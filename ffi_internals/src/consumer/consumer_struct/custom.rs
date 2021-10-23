@@ -124,6 +124,7 @@ impl From<&custom::StructFFI<'_>> for ConsumerStruct {
             clone_fn_name: inputs.clone_fn_name.to_string(),
             failable_init: inputs.custom_attributes.failable_init,
             forbid_memberwise_init: inputs.forbid_memberwise_init,
+            docs: crate::consumer::consumer_docs_from(inputs.doc_comments, 0),
         }
     }
 }

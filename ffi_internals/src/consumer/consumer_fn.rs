@@ -2,11 +2,8 @@
 //! Generates a wrapping function in the consumer's language.
 //!
 
-use crate::{
-    heck::MixedCase,
-    items::fn_ffi::{FnFFI, FnReceiver},
-    syn::Ident,
-};
+use crate::{heck::MixedCase, items::fn_ffi::{FnFFI, FnReceiver}, syn::Ident};
+use super::TAB_SIZE;
 
 impl FnFFI {
     /// Generates a consumer function for calling the foreign function produced by
@@ -24,12 +21,14 @@ impl FnFFI {
                 || (String::new(), String::new(), String::new()),
                 crate::type_ffi::TypeFFI::consumer_return_type_components,
             );
-        format!(
-            "
-    {static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
-        {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
-    }}
-",
+        let mut result = crate::consumer::consumer_docs_from(&*self.doc_comments, 1);
+        result.push_str(&format!(
+"{spacer:l1$}{static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
+{spacer:l2$}{return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
+{spacer:l1$}}}",
+            spacer = " ",
+            l1 = TAB_SIZE,
+            l2 = TAB_SIZE * 2,
             static_keyword = static_keyword,
             consumer_fn_name = self.fn_name.to_string().to_mixed_case(),
             consumer_parameters = self.consumer_parameters(),
@@ -38,7 +37,8 @@ impl FnFFI {
             ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
             ffi_parameters = self.ffi_calling_arguments(),
             close_conversion = close_conversion,
-        )
+        ));
+        result
     }
 
     /// Generates the contents of a consumer extension for this function, extending the original
@@ -60,28 +60,53 @@ impl FnFFI {
                 crate::type_ffi::TypeFFI::consumer_return_type_components,
             );
 
-        let extension = format!(
-            "
-extension {consumer_type} {{
+        let mut result = format!("extension {} {{", consumer_type);
+        result.push('\n');
+        result.push_str(&crate::consumer::consumer_docs_from(&*self.doc_comments, 1));
+        result.push_str(&format!(
+"{spacer:l1$}{static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
+{spacer:l2$}{return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
+{spacer:l1$}}}",
+                        spacer = " ",
+                        l1 = TAB_SIZE,
+                        l2 = TAB_SIZE * 2,
+                        static_keyword = static_keyword,
+                        consumer_fn_name = self.fn_name.to_string().to_mixed_case(),
+                        consumer_parameters = self.consumer_parameters(),
+                        return_sig = return_sig,
+                        return_conversion = return_conversion,
+                        ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
+                        ffi_parameters = self.ffi_calling_arguments(),
+                        close_conversion = close_conversion,
+                    ));
+        result.push('\n');
+        result.push('}');
+//         let extension = format!(
+// "extension {consumer_type} {{
 
-    {static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
-        {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
-    }}
+// {docs}
+// {spacer:l1$}{static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
+// {spacer:l2$}{return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
+// {spacer:l1$}}}
 
-}}
-",
-            static_keyword = static_keyword,
-            consumer_type = consumer_type,
-            consumer_fn_name = self.fn_name.to_string().to_mixed_case(),
-            consumer_parameters = self.consumer_parameters(),
-            return_sig = return_sig,
-            return_conversion = return_conversion,
-            ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
-            ffi_parameters = self.ffi_calling_arguments(),
-            close_conversion = close_conversion,
-        );
+// }}
+// ",
+//             spacer = " ",
+//             l1 = TAB_SIZE,
+//             l2 = TAB_SIZE * 2,
+//             docs = crate::consumer::consumer_docs_from(&*self.doc_comments, 1),
+//             static_keyword = static_keyword,
+//             consumer_type = consumer_type,
+//             consumer_fn_name = self.fn_name.to_string().to_mixed_case(),
+//             consumer_parameters = self.consumer_parameters(),
+//             return_sig = return_sig,
+//             return_conversion = return_conversion,
+//             ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
+//             ffi_parameters = self.ffi_calling_arguments(),
+//             close_conversion = close_conversion,
+//         );
 
-        [super::header_and_imports(&[]), extension].join("")
+        [super::header_and_imports(&[]), result].join("")
     }
 
     fn consumer_parameters(&self) -> String {

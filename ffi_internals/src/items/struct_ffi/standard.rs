@@ -8,7 +8,7 @@ use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashSet;
-use syn::{spanned::Spanned, Fields, Ident, Path};
+use syn::{spanned::Spanned, Attribute, Fields, Ident, Path};
 
 /// Represents the components of a struct for generating a standard derived FFI.
 ///
@@ -46,6 +46,9 @@ pub struct StructFFI<'a> {
     /// `TokenStream`.
     ///
     getter_fns: TokenStream,
+    /// Documentation comments on this struct.
+    ///
+    pub doc_comments: &'a [Attribute],
 }
 
 impl StructFFI<'_> {
@@ -113,6 +116,8 @@ pub struct StructInputs<'a> {
     /// generated memberwise init bypasses those restrictions.
     ///
     pub forbid_memberwise_init: bool,
+    /// Documentation comments on this struct.
+    pub doc_comments: &'a [Attribute],
 }
 
 impl<'a> From<&StructInputs<'a>> for StructFFI<'a> {
@@ -159,6 +164,7 @@ impl<'a> From<&StructInputs<'a>> for StructFFI<'a> {
             assignment_expressions,
             getter_fns,
             forbid_memberwise_init: derive.forbid_memberwise_init,
+            doc_comments: derive.doc_comments,
         }
     }
 }

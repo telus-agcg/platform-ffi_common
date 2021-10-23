@@ -95,6 +95,7 @@ impl From<&standard::StructFFI<'_>> for ConsumerStruct {
             clone_fn_name: struct_ffi.clone_fn_name().to_string(),
             failable_init: false,
             forbid_memberwise_init: struct_ffi.forbid_memberwise_init,
+            docs: crate::consumer::consumer_docs_from(struct_ffi.doc_comments, 0),
         }
     }
 }
