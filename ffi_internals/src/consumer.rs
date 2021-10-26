@@ -29,8 +29,8 @@
 #![allow(clippy::module_name_repetitions)]
 
 use heck::CamelCase;
-use proc_macro_error::{ResultExt, abort};
-use syn::{Attribute, spanned::Spanned};
+use proc_macro_error::{abort, ResultExt};
+use syn::{spanned::Spanned, Attribute};
 
 mod error;
 mod primitives_conformance;
@@ -70,19 +70,22 @@ pub fn write_consumer_foundation(consumer_dir: &str, language: &str) -> Result<(
 }
 
 /// Converts a slice of doc comment attributes to a string of correctly formatted consumer comments.
-/// 
+///
 /// `attrs` must be doc comments, or this will abort the proc macro.
 /// `indentation_level` should be the number of levels that the type on this comment is nested. It
 /// will be multiplied by `TAB_SIZE`.
-/// 
+///
 /// Note that the returned `String` ends in a newline, so you don't need to (and shouldn't) push an
 /// additional newline before pushing the consumer content.
-/// 
+///
 fn consumer_docs_from(attrs: &[Attribute], indentation_level: usize) -> String {
     let mut docs = attrs
         .iter()
         .filter_map(|attr| {
-            if let syn::Meta::NameValue(meta) = attr.parse_meta().expect_or_abort("Cannot parse meta for doc comment.") {
+            if let syn::Meta::NameValue(meta) = attr
+                .parse_meta()
+                .expect_or_abort("Cannot parse meta for doc comment.")
+            {
                 if let syn::Lit::Str(lit) = meta.lit {
                     let doc = lit.value();
                     if doc.is_empty() {
@@ -96,7 +99,9 @@ fn consumer_docs_from(attrs: &[Attribute], indentation_level: usize) -> String {
         .map(|doc| format_doc(&doc, indentation_level))
         .collect::<Vec<String>>()
         .join("\n");
-    if !docs.is_empty() { docs.push('\n') }
+    if !docs.is_empty() {
+        docs.push('\n');
+    }
     docs
 }
 
@@ -166,31 +171,31 @@ pub trait ConsumerType {
     fn type_name(&self) -> String;
 
     /// The type definition.
-    /// 
+    ///
     /// This should not include leading or trailing newlines.
     ///
     fn type_definition(&self) -> Option<String>;
 
     /// The implementation of the `NativeData` protocol.
-    /// 
+    ///
     /// This should not include leading or trailing newlines.
-    /// 
+    ///
     fn native_data_impl(&self) -> String;
 
     /// The implementation of the `FFIArray` protocol.
-    /// 
+    ///
     /// This should not include leading or trailing newlines.
     ///
     fn ffi_array_impl(&self) -> String;
 
     /// The implementation of the `NativeArrayData` protocol.
-    /// 
+    ///
     /// This should not include leading or trailing newlines.
     ///
     fn native_array_data_impl(&self) -> String;
 
     /// The implementation for handling optional instances of this type.
-    /// 
+    ///
     /// This should not include leading or trailing newlines.
     ///
     fn option_impl(&self) -> String;
@@ -268,9 +273,11 @@ fn build_imports(paths: &[syn::Path]) -> Vec<String> {
 fn header_and_imports(additional_imports: &[syn::Path]) -> String {
     let mut output = HEADER.to_string();
     output.push_str("\n\n");
-    output.push_str(&option_env!("FFI_COMMON_FRAMEWORK")
-        .map(|f| format!("import {}", f))
-        .unwrap_or_default());
+    output.push_str(
+        &option_env!("FFI_COMMON_FRAMEWORK")
+            .map(|f| format!("import {}", f))
+            .unwrap_or_default(),
+    );
 
     if !additional_imports.is_empty() {
         output.push('\n');

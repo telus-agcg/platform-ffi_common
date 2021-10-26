@@ -40,10 +40,13 @@ impl ImplFFI {
         let (module_docs_for_fn, mut result) = if self.fns.len() == 1 {
             (Some(&*self.doc_comments), String::default())
         } else {
-            (None, crate::consumer::consumer_docs_from(&*self.doc_comments, 0))
+            (
+                None,
+                crate::consumer::consumer_docs_from(&*self.doc_comments, 0),
+            )
         };
         result.push_str(&format!(
-"public extension {native_type} {{
+            "public extension {native_type} {{
 {functions}
 }}",
             native_type = self.type_name.to_string(),

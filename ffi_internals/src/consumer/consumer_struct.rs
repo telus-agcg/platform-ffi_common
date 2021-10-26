@@ -4,7 +4,10 @@
 //! native getters for reading properties from the Rust struct.
 //!
 
-use crate::{consumer::{ConsumerType, TAB_SIZE}, syn::Path};
+use crate::{
+    consumer::{ConsumerType, TAB_SIZE},
+    syn::Path,
+};
 
 mod custom;
 mod standard;
@@ -119,7 +122,7 @@ impl ConsumerType for ConsumerStruct {
     fn type_definition(&self) -> Option<String> {
         let mut result = self.docs.clone();
         result.push_str(&format!(
-"public final class {class} {{
+            "public final class {class} {{
 
 {spacer:l1$}internal let pointer: OpaquePointer",
             spacer = " ",
@@ -130,14 +133,14 @@ impl ConsumerType for ConsumerStruct {
         result.push_str("\n\n");
 
         // If we have an init_impl, push it and another pair of newlines.
-        if let Some(init_impl) = self.init_impl(){
+        if let Some(init_impl) = self.init_impl() {
             result.push_str(&init_impl);
             result.push_str("\n\n");
         }
 
         // Push the internal init, deinit, and getters.
         result.push_str(&format!(
-"{spacer:l1$}internal init(_ pointer: OpaquePointer) {{
+            "{spacer:l1$}internal init(_ pointer: OpaquePointer) {{
 {spacer:l2$}self.pointer = pointer
 {spacer:l1$}}}
 
@@ -191,7 +194,7 @@ extension {type_name}: NativeData {{
 
     fn ffi_array_impl(&self) -> String {
         format!(
-"// MARK: - FFIArray
+            "// MARK: - FFIArray
 extension {array_name}: FFIArray {{
 {spacer:l1$}public typealias Value = OpaquePointer?
 
@@ -214,7 +217,7 @@ extension {array_name}: FFIArray {{
 
     fn native_array_data_impl(&self) -> String {
         format!(
-"// MARK: - NativeArrayData
+            "// MARK: - NativeArrayData
 extension {type_name}: NativeArrayData {{
 {spacer:l1$}public typealias FFIArrayType = {array_name}
 }}",
@@ -227,7 +230,7 @@ extension {type_name}: NativeArrayData {{
 
     fn option_impl(&self) -> String {
         format!(
-"// MARK: - Optional
+            "// MARK: - Optional
 public extension Optional where Wrapped == {type_name} {{
 {spacer:l1$}func clone() -> OpaquePointer? {{
 {spacer:l2$}switch self {{

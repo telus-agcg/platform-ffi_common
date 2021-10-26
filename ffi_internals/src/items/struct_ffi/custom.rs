@@ -59,6 +59,7 @@ impl<'a> StructFFI<'a> {
     /// Create a new `StructFFI` from derive macro inputs.
     ///
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         type_name: &'a Ident,
         module_name: &'a Ident,

@@ -2,14 +2,22 @@
 //! Generates a wrapping function in the consumer's language.
 //!
 
-use crate::{heck::MixedCase, items::fn_ffi::{FnFFI, FnReceiver}, syn::Ident};
 use super::TAB_SIZE;
+use crate::{
+    heck::MixedCase,
+    items::fn_ffi::{FnFFI, FnReceiver},
+    syn::Ident,
+};
 
 impl FnFFI {
     /// Generates a consumer function for calling the foreign function produced by
     /// `self.generate_ffi(...)`.
     ///
-    pub(super) fn generate_consumer(&self, module_name: &Ident, module_docs: Option<&[syn::Attribute]>) -> String {
+    pub(super) fn generate_consumer(
+        &self,
+        module_name: &Ident,
+        module_docs: Option<&[syn::Attribute]>,
+    ) -> String {
         // Include the keyword `static` if this function doesn't take a receiver.
         let static_keyword = if self.receiver == FnReceiver::None {
             "static "
@@ -21,7 +29,9 @@ impl FnFFI {
                 || (String::new(), String::new(), String::new()),
                 crate::type_ffi::TypeFFI::consumer_return_type_components,
             );
-        let mut result = module_docs.map_or(String::default(), |docs| crate::consumer::consumer_docs_from(docs, 1));
+        let mut result = module_docs.map_or(String::default(), |docs| {
+            crate::consumer::consumer_docs_from(docs, 1)
+        });
         result.push_str(&crate::consumer::consumer_docs_from(&*self.doc_comments, 1));
         result.push_str(&format!(
 "{spacer:l1$}{static_keyword}func {consumer_fn_name}({consumer_parameters}) {return_sig} {{

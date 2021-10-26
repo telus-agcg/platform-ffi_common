@@ -23,10 +23,9 @@ impl custom::StructFFI<'_> {
             .iter()
             .map(|x| crate::consumer::get_segment_ident(x.segments.last()))
             .collect();
-        self.getters
-            .iter()
-            .enumerate()
-            .fold(String::new(), |mut acc, (index, (getter_ident, getter_type))| {
+        self.getters.iter().enumerate().fold(
+            String::new(),
+            |mut acc, (index, (getter_ident, getter_type))| {
                 // We're going to give things an internal access modifier if they're failable on the
                 // Rust side. This will require some additional (handwritten) Swift code for error
                 // handling before they can be accessed outside of the framework that contains the
@@ -49,7 +48,7 @@ impl custom::StructFFI<'_> {
                 };
 
                 acc.push_str(&format!(
-"{spacer:l1$}{access_modifier} var {consumer_getter_name}: {consumer_type} {{
+                    "{spacer:l1$}{access_modifier} var {consumer_getter_name}: {consumer_type} {{
 {spacer:l2$}{consumer_type}.fromRust({getter_ident}(pointer))
 {spacer:l1$}}}",
                     spacer = " ",
@@ -61,9 +60,12 @@ impl custom::StructFFI<'_> {
                     getter_ident = getter_ident.to_string()
                 ));
                 // Push an extra line between var declarations.
-                if index < self.getters.len() - 1 { acc.push_str("\n\n") }
+                if index < self.getters.len() - 1 {
+                    acc.push_str("\n\n");
+                }
                 acc
-            })
+            },
+        )
     }
 
     fn initialization_args(&self) -> InitArgs {

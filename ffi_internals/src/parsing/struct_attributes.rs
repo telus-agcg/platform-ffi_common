@@ -100,7 +100,8 @@ impl From<&[Attribute]> for StructAttributes {
                         other.span(),
                         "Unsupported ffi attribute -- only \
 `custom`, `alias_modules`, `consumer_imports`, `ffi_mod_imports`, `failable_init`, `failable_fns`, \
-and `forbid_memberwise_init` are allowed in this position.");
+and `forbid_memberwise_init` are allowed in this position."
+                    );
                 }
             }
         }

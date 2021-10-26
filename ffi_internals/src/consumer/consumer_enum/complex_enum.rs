@@ -70,7 +70,7 @@ impl ComplexConsumerEnum<'_> {
 
     fn ffi_declaration(&self) -> String {
         format!(
-r#"{spacer:l1$}public final class FFI {{
+            r#"{spacer:l1$}public final class FFI {{
 {spacer:l2$}internal let pointer: OpaquePointer
 
 {spacer:l2$}internal init(_ pointer: OpaquePointer) {{
@@ -91,7 +91,7 @@ r#"{spacer:l1$}public final class FFI {{
 
     fn enum_protocol_conformance(&self) -> String {
         format!(
-r#"// MARK: - ForeignEnum
+            r#"// MARK: - ForeignEnum
 extension {type_name}.FFI: ForeignEnum {{
 {spacer:l1$}public typealias NativeEnumType = {type_name}
 
@@ -206,7 +206,7 @@ extension {type_name}: NativeEnum {{
                     })
                     .collect();
                 format!(
-r#"{spacer:l2$}case {ffi_variant_ident}:
+                    r#"{spacer:l2$}case {ffi_variant_ident}:
 {spacer:l3$}return .{consumer_variant_ident}(
 {field_getters},
 {spacer:l4$}self
@@ -250,7 +250,7 @@ impl ConsumerType for ComplexConsumerEnum<'_> {
     fn type_definition(&self) -> Option<String> {
         let mut result = crate::consumer::consumer_docs_from(self.enum_ffi.doc_comments, 0);
         result.push_str(&format!(
-r#"public enum {type_name} {{
+            r#"public enum {type_name} {{
 {case_definitions}
 
 {case_inits}
@@ -273,7 +273,7 @@ extension {type_name} {{
 
     fn native_data_impl(&self) -> String {
         format!(
-r#"// MARK: - NativeData
+            r#"// MARK: - NativeData
 extension {type_name}.FFI: NativeData {{
 {spacer:l1$}public typealias ForeignType = OpaquePointer?
 
@@ -329,7 +329,7 @@ extension {type_name}: NativeData {{
 
     fn ffi_array_impl(&self) -> String {
         format!(
-r#"extension {array_name}: FFIArray {{
+            r#"extension {array_name}: FFIArray {{
 {spacer:l1$}public typealias Value = OpaquePointer?
 
 {spacer:l1$}public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
@@ -351,7 +351,7 @@ r#"extension {array_name}: FFIArray {{
 
     fn native_array_data_impl(&self) -> String {
         format!(
-r#"// MARK: - NativeArrayData
+            r#"// MARK: - NativeArrayData
 extension {type_name}.FFI: NativeArrayData {{
 {spacer:l1$}public typealias FFIArrayType = {array_type_name}
 }}
@@ -368,7 +368,7 @@ extension {type_name}: NativeArrayData {{
 
     fn option_impl(&self) -> String {
         format!(
-r#"// MARK: - Optional
+            r#"// MARK: - Optional
 public extension Optional where Wrapped == {type_name}.FFI {{
 {spacer:l1$}func clone() -> OpaquePointer? {{
 {spacer:l2$}switch self {{
@@ -551,7 +551,7 @@ mod tests {
         };
         assert_eq!(
             complex_consumer_enum.type_definition().unwrap(),
-r#"public enum TestType {
+            r#"public enum TestType {
     case variant1(UInt16, TestType.FFI)
     case variant2(UInt8, TestType.FFI)
 
@@ -634,7 +634,7 @@ extension TestType: NativeEnum {
         };
         assert_eq!(
             complex_consumer_enum.native_data_impl(),
-r#"// MARK: - NativeData
+            r#"// MARK: - NativeData
 extension TestType.FFI: NativeData {
     public typealias ForeignType = OpaquePointer?
 
@@ -695,7 +695,7 @@ extension TestType: NativeData {
         };
         assert_eq!(
             complex_consumer_enum.native_data_impl(),
-r#"// MARK: - NativeData
+            r#"// MARK: - NativeData
 extension TestType.FFI: NativeData {
     public typealias ForeignType = OpaquePointer?
 
@@ -756,7 +756,7 @@ extension TestType: NativeData {
         };
         assert_eq!(
             complex_consumer_enum.native_data_impl(),
-r#"// MARK: - NativeData
+            r#"// MARK: - NativeData
 extension TestType.FFI: NativeData {
     public typealias ForeignType = OpaquePointer?
 
@@ -817,7 +817,7 @@ extension TestType: NativeData {
         };
         assert_eq!(
             complex_consumer_enum.native_data_impl(),
-r#"// MARK: - NativeData
+            r#"// MARK: - NativeData
 extension TestType.FFI: NativeData {
     public typealias ForeignType = OpaquePointer?
 

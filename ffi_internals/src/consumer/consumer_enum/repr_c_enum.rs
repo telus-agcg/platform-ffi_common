@@ -47,7 +47,7 @@ impl ConsumerType for ReprCConsumerEnum<'_> {
 
     fn native_data_impl(&self) -> String {
         format!(
-"// MARK: - NativeData
+            "// MARK: - NativeData
 extension {type_name}: NativeData {{
     public typealias ForeignType = {type_name}
 
@@ -69,7 +69,7 @@ extension {type_name}: NativeData {{
 
     fn ffi_array_impl(&self) -> String {
         format!(
-"// MARK: - FFIArray
+            "// MARK: - FFIArray
 extension {array_name}: FFIArray {{
     public typealias Value = {type_name}
 
@@ -90,7 +90,7 @@ extension {array_name}: FFIArray {{
 
     fn native_array_data_impl(&self) -> String {
         format!(
-"// MARK: - NativeArrayData
+            "// MARK: - NativeArrayData
 extension {type_name}: NativeArrayData {{
     public typealias FFIArrayType = {array_name}
 }}",
@@ -101,7 +101,7 @@ extension {type_name}: NativeArrayData {{
 
     fn option_impl(&self) -> String {
         format!(
-"// MARK: - Optional
+            "// MARK: - Optional
 public extension Optional where Wrapped == {type_name} {{
     func clone() -> UnsafeMutablePointer<{type_name}>? {{
         switch self {{
@@ -174,7 +174,7 @@ mod tests {
         let repr_c_enum = ReprCConsumerEnum::new(&ident);
         assert_eq!(
             repr_c_enum.native_data_impl(),
-r#"// MARK: - NativeData
+            r#"// MARK: - NativeData
 extension TestType: NativeData {
     public typealias ForeignType = TestType
 
@@ -199,7 +199,7 @@ extension TestType: NativeData {
         let repr_c_enum = ReprCConsumerEnum::new(&ident);
         assert_eq!(
             repr_c_enum.ffi_array_impl(),
-r#"// MARK: - FFIArray
+            r#"// MARK: - FFIArray
 extension FFIArrayTestType: FFIArray {
     public typealias Value = TestType
 
@@ -220,7 +220,7 @@ extension FFIArrayTestType: FFIArray {
         let repr_c_enum = ReprCConsumerEnum::new(&ident);
         assert_eq!(
             repr_c_enum.native_array_data_impl(),
-r#"// MARK: - NativeArrayData
+            r#"// MARK: - NativeArrayData
 extension TestType: NativeArrayData {
     public typealias FFIArrayType = FFIArrayTestType
 }"#
@@ -233,7 +233,7 @@ extension TestType: NativeArrayData {
         let repr_c_enum = ReprCConsumerEnum::new(&ident);
         assert_eq!(
             repr_c_enum.option_impl(),
-r#"// MARK: - Optional
+            r#"// MARK: - Optional
 public extension Optional where Wrapped == TestType {
     func clone() -> UnsafeMutablePointer<TestType>? {
         switch self {
