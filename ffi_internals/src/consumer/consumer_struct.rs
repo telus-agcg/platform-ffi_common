@@ -116,7 +116,7 @@ impl ConsumerType for ConsumerStruct {
     /// Generates a wrapper for a struct so that the native interface in the consumer's language
     /// correctly wraps the generated FFI module.
     ///
-    fn type_definition(&self) -> String {
+    fn type_definition(&self) -> Option<String> {
         let mut result = self.docs.clone();
         result.push_str(&format!(
 "public final class {class} {{
@@ -153,7 +153,7 @@ impl ConsumerType for ConsumerStruct {
             free_fn_name = self.free_fn_name,
             getters = self.consumer_getters
         ));
-        result
+        Some(result)
     }
 
     fn native_data_impl(&self) -> String {

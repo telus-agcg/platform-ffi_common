@@ -33,14 +33,15 @@ pub(super) fn generate(native_type: &str, ffi_type: &str, consumer_type: &str) -
         consumer_type_base(consumer_type, ffi_type),
         consumer_array_type(consumer_type, &format!("FFIArray{}", native_type)),
     ]
-    .join("")
+    .join("\n\n")
 }
 
 /// Conversion from the consumer's native array type to the `FFIArray` type for `native_type`.
 ///
 fn array_conformance(array_name: &str, ffi_type: &str, init: &str, free: &str) -> String {
     format!(
-"extension {}: FFIArray {{
+"// MARK: - FFIArray
+extension {}: FFIArray {{
     public typealias Value = {}
 
     public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
@@ -59,7 +60,8 @@ fn array_conformance(array_name: &str, ffi_type: &str, init: &str, free: &str) -
 ///
 fn option_conformance(consumer_type: &str, ffi_type: &str, init: &str, free: &str) -> String {
     format!(
-"public extension Optional where Wrapped == {} {{
+"// MARK: - Optional
+public extension Optional where Wrapped == {} {{
     func clone() -> UnsafeMutablePointer<{}>? {{
         switch self {{
         case let .some(value):
@@ -101,7 +103,8 @@ fn option_conformance(consumer_type: &str, ffi_type: &str, init: &str, free: &st
 ///
 fn consumer_type_base(consumer_type: &str, ffi_type: &str) -> String {
     format!(
-"extension {}: NativeData {{
+"// MARK: - NativeData
+extension {}: NativeData {{
     public typealias ForeignType = {}
 
     public func clone() -> ForeignType {{
@@ -124,7 +127,8 @@ fn consumer_type_base(consumer_type: &str, ffi_type: &str) -> String {
 ///
 fn consumer_array_type(consumer_type: &str, ffi_array_type: &str) -> String {
     format!(
-"extension {}: NativeArrayData {{
+"// MARK: - NativeArrayData
+extension {}: NativeArrayData {{
     public typealias FFIArrayType = {}
 }}",
         consumer_type, ffi_array_type

@@ -39,10 +39,10 @@ impl ConsumerType for ReprCConsumerEnum<'_> {
         self.type_name_ident().to_string()
     }
 
-    fn type_definition(&self) -> String {
+    fn type_definition(&self) -> Option<String> {
         // There's no type definition for repr(C) enums; instead, we extend the FFI enum since it's
         // usable as-is.
-        String::default()
+        None
     }
 
     fn native_data_impl(&self) -> String {
@@ -165,7 +165,7 @@ mod tests {
     fn test_type_definition() {
         let ident = format_ident!("TestType");
         let repr_c_enum = ReprCConsumerEnum::new(&ident);
-        assert!(repr_c_enum.type_definition().is_empty());
+        assert!(repr_c_enum.type_definition().is_none());
     }
 
     #[test]

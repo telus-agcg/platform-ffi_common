@@ -36,6 +36,7 @@ impl ComplexConsumerEnum<'_> {
             .variants
             .iter()
             .map(|variant| {
+                let mut result = crate::consumer::consumer_docs_from(&*variant.doc_comments, 1);
                 let ident = variant.ident.to_string().to_mixed_case();
                 let field_types: Vec<String> = variant
                     .fields
@@ -49,18 +50,11 @@ impl ComplexConsumerEnum<'_> {
                     String::default()
                 } else {
                     format!(
-                        "({}.FFI, {})",
+                        "({}, {}.FFI)",
+                        field_types.join(", "),
                         self.type_name_ident(),
-                        field_types.join(", ")
                     )
                 };
-                let mut result = crate::consumer::consumer_docs_from(&*variant.doc_comments, 1);
-                // let mut result = if docs.is_empty() {
-                //     String::default()
-                // } else {
-                //     docs
-                // };
-
                 result.push_str(&format!(
                     "{spacer:l1$}case {ident}{associated_values}",
                     spacer = " ",
@@ -214,8 +208,8 @@ extension {type_name}: NativeEnum {{
                 format!(
 r#"{spacer:l2$}case {ffi_variant_ident}:
 {spacer:l3$}return .{consumer_variant_ident}(
-{spacer:l4$}self,
-{field_getters}
+{field_getters},
+{spacer:l4$}self
 {spacer:l3$})"#,
                     spacer = " ",
                     l2 = TAB_SIZE * 2,
@@ -236,7 +230,7 @@ r#"{spacer:l2$}case {ffi_variant_ident}:
             .iter()
             .map(|variant| {
                 format!(
-                    "{spacer:l3$}let .{variant_name}(ffi, {placeholders})",
+                    "{spacer:l3$}let .{variant_name}({placeholders}, ffi)",
                     spacer = " ",
                     l3 = TAB_SIZE * 3,
                     variant_name = variant.ident.to_string().to_mixed_case(),
@@ -253,7 +247,7 @@ impl ConsumerType for ComplexConsumerEnum<'_> {
         self.type_name_ident().to_string()
     }
 
-    fn type_definition(&self) -> String {
+    fn type_definition(&self) -> Option<String> {
         let mut result = crate::consumer::consumer_docs_from(self.enum_ffi.doc_comments, 0);
         result.push_str(&format!(
 r#"public enum {type_name} {{
@@ -274,7 +268,7 @@ extension {type_name} {{
             ffi_declaration = self.ffi_declaration(),
             enum_protocol_conformance = self.enum_protocol_conformance(),
         ));
-        result
+        Some(result)
     }
 
     fn native_data_impl(&self) -> String {
@@ -556,10 +550,10 @@ mod tests {
             enum_ffi: &enum_ffi,
         };
         assert_eq!(
-            complex_consumer_enum.type_definition(),
+            complex_consumer_enum.type_definition().unwrap(),
 r#"public enum TestType {
-    case variant1(TestType.FFI, UInt16)
-    case variant2(TestType.FFI, UInt8)
+    case variant1(UInt16, TestType.FFI)
+    case variant2(UInt8, TestType.FFI)
 
     static func variant1(_ data: UInt16) -> Self {
         FFI(test_type_variant1_rust_ffi_init(data.clone())).makeNative()
@@ -572,7 +566,6 @@ r#"public enum TestType {
 
 // MARK: - FFI
 extension TestType {
-
     public final class FFI {
         internal let pointer: OpaquePointer
 
@@ -584,7 +577,6 @@ extension TestType {
             rust_ffi_free_test_type(pointer)
         }
     }
-
 }
 
 // MARK: - ForeignEnum
@@ -593,20 +585,16 @@ extension TestType.FFI: ForeignEnum {
 
     public func makeNative() -> NativeEnumType {
         switch get_test_type_variant(pointer) {
-
         case TestTypeType_variant1:
             return .variant1(
-                self,
-                .fromRust(get_test_type_variant1_unnamed_field_0(pointer))
+                .fromRust(get_test_type_variant1_unnamed_field_0(pointer)),
+                self
             )
-
-
         case TestTypeType_variant2:
             return .variant2(
-                self,
-                .fromRust(get_test_type_variant2_unnamed_field_0(pointer))
+                .fromRust(get_test_type_variant2_unnamed_field_0(pointer)),
+                self
             )
-
         default:
             fatalError("Unreachable")
         }
@@ -620,8 +608,8 @@ extension TestType: NativeEnum {
     public var ffi: FFI {
         switch self {
         case
-            let .variant1(ffi, _),
-            let .variant2(ffi, _)
+            let .variant1(_, ffi),
+            let .variant2(_, ffi)
         :
             return ffi
         }

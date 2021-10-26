@@ -169,7 +169,7 @@ pub trait ConsumerType {
     /// 
     /// This should not include leading or trailing newlines.
     ///
-    fn type_definition(&self) -> String;
+    fn type_definition(&self) -> Option<String>;
 
     /// The implementation of the `NativeData` protocol.
     /// 
@@ -217,17 +217,16 @@ where
     C: ConsumerType,
 {
     fn write_output(&self, out_dir: &str) {
-        let contents = [
-            header_and_imports(self.consumer_imports()),
-            self.type_definition(),
-            self.native_data_impl(),
-            self.ffi_array_impl(),
-            self.native_array_data_impl(),
-            self.option_impl(),
-        ]
-        .join("\n\n");
+        let mut contents = vec![header_and_imports(self.consumer_imports())];
+        if let Some(type_def) = self.type_definition() {
+            contents.push(type_def);
+        }
+        contents.push(self.native_data_impl());
+        contents.push(self.ffi_array_impl());
+        contents.push(self.native_array_data_impl());
+        contents.push(self.option_impl());
         let file_name = format!("{}.swift", self.type_name());
-        crate::write_consumer_file(&file_name, contents, out_dir)
+        crate::write_consumer_file(&file_name, contents.join("\n\n"), out_dir)
             .unwrap_or_else(|err| proc_macro_error::abort!("Error writing consumer file: {}", err));
     }
 }
