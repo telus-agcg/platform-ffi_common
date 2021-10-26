@@ -33,22 +33,26 @@ impl ImplFFI {
     ///
     #[must_use]
     fn generate_consumer(&self) -> String {
-        let mut result = crate::consumer::consumer_docs_from(&*self.doc_comments, 0);
-        if !result.is_empty() { 
-            result.push('\n');
-        }
+        // If there's exactly one function in this impl, we want to push the impl docs down into the
+        // function so that they're move visible in the consumer API. This is useful for
+        // implementing traits like `PartialEq`, where the main API is `eq`, and any notes on the
+        // consumer implementation ought to be exposed there instead of on the extension.
+        let (module_docs_for_fn, mut result) = if self.fns.len() == 1 {
+            (Some(&*self.doc_comments), String::default())
+        } else {
+            (None, crate::consumer::consumer_docs_from(&*self.doc_comments, 0))
+        };
         result.push_str(&format!(
 "public extension {native_type} {{
 {functions}
-}}
-",
+}}",
             native_type = self.type_name.to_string(),
             functions = self
                 .fns
                 .iter()
-                .map(|f| f.generate_consumer(&self.module_name()))
+                .map(|f| f.generate_consumer(&self.module_name(), module_docs_for_fn))
                 .collect::<Vec<String>>()
-                .join("\n"),
+                .join("\n\n"),
         ));
         result
     }
@@ -60,6 +64,6 @@ impl From<&ImplFFI> for String {
             super::header_and_imports(&*impl_ffi.consumer_imports),
             impl_ffi.generate_consumer(),
         ]
-        .join("")
+        .join("\n")
     }
 }

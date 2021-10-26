@@ -25,7 +25,8 @@ impl custom::StructFFI<'_> {
             .collect();
         self.getters
             .iter()
-            .fold(String::new(), |mut acc, (getter_ident, getter_type)| {
+            .enumerate()
+            .fold(String::new(), |mut acc, (index, (getter_ident, getter_type))| {
                 // We're going to give things an internal access modifier if they're failable on the
                 // Rust side. This will require some additional (handwritten) Swift code for error
                 // handling before they can be accessed outside of the framework that contains the
@@ -48,11 +49,9 @@ impl custom::StructFFI<'_> {
                 };
 
                 acc.push_str(&format!(
-                    "
-{spacer:l1$}{access_modifier} var {consumer_getter_name}: {consumer_type} {{
+"{spacer:l1$}{access_modifier} var {consumer_getter_name}: {consumer_type} {{
 {spacer:l2$}{consumer_type}.fromRust({getter_ident}(pointer))
-{spacer:l1$}}}
-",
+{spacer:l1$}}}",
                     spacer = " ",
                     l1 = TAB_SIZE,
                     l2 = TAB_SIZE * 2,
@@ -61,6 +60,8 @@ impl custom::StructFFI<'_> {
                     consumer_type = consumer_type,
                     getter_ident = getter_ident.to_string()
                 ));
+                // Push an extra line between var declarations.
+                if index < self.getters.len() - 1 { acc.push_str("\n\n") }
                 acc
             })
     }

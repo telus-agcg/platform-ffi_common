@@ -76,8 +76,7 @@ impl ComplexConsumerEnum<'_> {
 
     fn ffi_declaration(&self) -> String {
         format!(
-            r#"
-{spacer:l1$}public final class FFI {{
+r#"{spacer:l1$}public final class FFI {{
 {spacer:l2$}internal let pointer: OpaquePointer
 
 {spacer:l2$}internal init(_ pointer: OpaquePointer) {{
@@ -87,8 +86,7 @@ impl ComplexConsumerEnum<'_> {
 {spacer:l2$}deinit {{
 {spacer:l3$}{free_fn_name}(pointer)
 {spacer:l2$}}}
-{spacer:l1$}}}
-"#,
+{spacer:l1$}}}"#,
             spacer = " ",
             l1 = TAB_SIZE,
             l2 = TAB_SIZE * 2,
@@ -99,7 +97,7 @@ impl ComplexConsumerEnum<'_> {
 
     fn enum_protocol_conformance(&self) -> String {
         format!(
-            r#"// MARK: - ForeignEnum
+r#"// MARK: - ForeignEnum
 extension {type_name}.FFI: ForeignEnum {{
 {spacer:l1$}public typealias NativeEnumType = {type_name}
 
@@ -214,13 +212,11 @@ extension {type_name}: NativeEnum {{
                     })
                     .collect();
                 format!(
-                    r#"
-{spacer:l2$}case {ffi_variant_ident}:
+r#"{spacer:l2$}case {ffi_variant_ident}:
 {spacer:l3$}return .{consumer_variant_ident}(
 {spacer:l4$}self,
 {field_getters}
-{spacer:l3$})
-"#,
+{spacer:l3$})"#,
                     spacer = " ",
                     l2 = TAB_SIZE * 2,
                     l3 = TAB_SIZE * 3,
@@ -260,8 +256,7 @@ impl ConsumerType for ComplexConsumerEnum<'_> {
     fn type_definition(&self) -> String {
         let mut result = crate::consumer::consumer_docs_from(self.enum_ffi.doc_comments, 0);
         result.push_str(&format!(
-            r#"
-public enum {type_name} {{
+r#"public enum {type_name} {{
 {case_definitions}
 
 {case_inits}
@@ -272,8 +267,7 @@ extension {type_name} {{
 {ffi_declaration}
 }}
 
-{enum_protocol_conformance}
-"#,
+{enum_protocol_conformance}"#,
             type_name = self.type_name(),
             case_definitions = self.case_definitions(),
             case_inits = self.case_inits(),
@@ -285,8 +279,7 @@ extension {type_name} {{
 
     fn native_data_impl(&self) -> String {
         format!(
-            r#"
-// MARK: - NativeData
+r#"// MARK: - NativeData
 extension {type_name}.FFI: NativeData {{
 {spacer:l1$}public typealias ForeignType = OpaquePointer?
 
@@ -331,8 +324,7 @@ extension {type_name}: NativeData {{
 {spacer:l1$}public static func fromRust(_ foreignObject: FFIType.ForeignType) -> Self {{
 {spacer:l2$}Self.FFIType.fromRust(foreignObject).makeNative()
 {spacer:l1$}}}
-}}
-"#,
+}}"#,
             spacer = " ",
             l1 = TAB_SIZE,
             l2 = TAB_SIZE * 2,
@@ -343,8 +335,7 @@ extension {type_name}: NativeData {{
 
     fn ffi_array_impl(&self) -> String {
         format!(
-            r#"
-extension {array_name}: FFIArray {{
+r#"extension {array_name}: FFIArray {{
 {spacer:l1$}public typealias Value = OpaquePointer?
 
 {spacer:l1$}public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
@@ -354,8 +345,7 @@ extension {array_name}: FFIArray {{
 {spacer:l1$}public static func free(_ array: Self) {{
 {spacer:l2$}{array_free_fn_name}(array)
 {spacer:l1$}}}
-}}
-"#,
+}}"#,
             spacer = " ",
             l1 = TAB_SIZE,
             l2 = TAB_SIZE * 2,
@@ -367,16 +357,14 @@ extension {array_name}: FFIArray {{
 
     fn native_array_data_impl(&self) -> String {
         format!(
-            r#"
-// MARK: - NativeArrayData
+r#"// MARK: - NativeArrayData
 extension {type_name}.FFI: NativeArrayData {{
 {spacer:l1$}public typealias FFIArrayType = {array_type_name}
 }}
 
 extension {type_name}: NativeArrayData {{
 {spacer:l1$}public typealias FFIArrayType = {array_type_name}
-}}
-"#,
+}}"#,
             spacer = " ",
             l1 = TAB_SIZE,
             type_name = self.type_name(),
@@ -386,8 +374,7 @@ extension {type_name}: NativeArrayData {{
 
     fn option_impl(&self) -> String {
         format!(
-            r#"
-// MARK: - Optional
+r#"// MARK: - Optional
 public extension Optional where Wrapped == {type_name}.FFI {{
 {spacer:l1$}func clone() -> OpaquePointer? {{
 {spacer:l2$}switch self {{
@@ -440,8 +427,7 @@ public extension Optional where Wrapped == {type_name} {{
 {spacer:l2$}}}
 {spacer:l2$}return Wrapped.fromRust(ptr)
 {spacer:l1$}}}
-}}
-"#,
+}}"#,
             spacer = " ",
             l1 = TAB_SIZE,
             l2 = TAB_SIZE * 2,
@@ -571,8 +557,7 @@ mod tests {
         };
         assert_eq!(
             complex_consumer_enum.type_definition(),
-            r#"
-public enum TestType {
+r#"public enum TestType {
     case variant1(TestType.FFI, UInt16)
     case variant2(TestType.FFI, UInt8)
 
@@ -645,8 +630,7 @@ extension TestType: NativeEnum {
     public static func fromRust(pointer: FFIType.ForeignType) -> Self {
         return FFI.fromRust(pointer).makeNative()
     }
-}
-"#
+}"#
         );
     }
 
@@ -662,8 +646,7 @@ extension TestType: NativeEnum {
         };
         assert_eq!(
             complex_consumer_enum.native_data_impl(),
-            r#"
-// MARK: - NativeData
+r#"// MARK: - NativeData
 extension TestType.FFI: NativeData {
     public typealias ForeignType = OpaquePointer?
 
@@ -708,8 +691,7 @@ extension TestType: NativeData {
     public static func fromRust(_ foreignObject: FFIType.ForeignType) -> Self {
         Self.FFIType.fromRust(foreignObject).makeNative()
     }
-}
-"#
+}"#
         );
     }
 
@@ -725,8 +707,7 @@ extension TestType: NativeData {
         };
         assert_eq!(
             complex_consumer_enum.native_data_impl(),
-            r#"
-// MARK: - NativeData
+r#"// MARK: - NativeData
 extension TestType.FFI: NativeData {
     public typealias ForeignType = OpaquePointer?
 
@@ -771,8 +752,7 @@ extension TestType: NativeData {
     public static func fromRust(_ foreignObject: FFIType.ForeignType) -> Self {
         Self.FFIType.fromRust(foreignObject).makeNative()
     }
-}
-"#
+}"#
         );
     }
 
@@ -788,8 +768,7 @@ extension TestType: NativeData {
         };
         assert_eq!(
             complex_consumer_enum.native_data_impl(),
-            r#"
-// MARK: - NativeData
+r#"// MARK: - NativeData
 extension TestType.FFI: NativeData {
     public typealias ForeignType = OpaquePointer?
 
@@ -834,8 +813,7 @@ extension TestType: NativeData {
     public static func fromRust(_ foreignObject: FFIType.ForeignType) -> Self {
         Self.FFIType.fromRust(foreignObject).makeNative()
     }
-}
-"#
+}"#
         );
     }
 
@@ -851,8 +829,7 @@ extension TestType: NativeData {
         };
         assert_eq!(
             complex_consumer_enum.native_data_impl(),
-            r#"
-// MARK: - NativeData
+r#"// MARK: - NativeData
 extension TestType.FFI: NativeData {
     public typealias ForeignType = OpaquePointer?
 
@@ -897,8 +874,7 @@ extension TestType: NativeData {
     public static func fromRust(_ foreignObject: FFIType.ForeignType) -> Self {
         Self.FFIType.fromRust(foreignObject).makeNative()
     }
-}
-"#
+}"#
         );
     }
 }

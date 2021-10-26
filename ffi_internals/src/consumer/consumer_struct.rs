@@ -4,7 +4,7 @@
 //! native getters for reading properties from the Rust struct.
 //!
 
-use crate::{consumer::ConsumerType, syn::Path};
+use crate::{consumer::{ConsumerType, TAB_SIZE}, syn::Path};
 
 mod custom;
 mod standard;
@@ -64,12 +64,12 @@ impl ConsumerStruct {
         format!("ffi_array_{}_free", self.type_name)
     }
 
-    fn init_impl(&self) -> String {
+    fn init_impl(&self) -> Option<String> {
         if self.forbid_memberwise_init {
-            return String::default();
+            return None;
         }
         if self.failable_init {
-            format!(
+            Some(format!(
                 "{spacer:l1$}internal init?(
 {args}
 {spacer:l1$}) {{
@@ -81,15 +81,15 @@ impl ConsumerStruct {
 {spacer:l2$}self.pointer = pointer
 {spacer:l1$}}}",
                 spacer = " ",
-                l1 = super::TAB_SIZE,
-                l2 = super::TAB_SIZE * 2,
-                l3 = super::TAB_SIZE * 3,
+                l1 = TAB_SIZE,
+                l2 = TAB_SIZE * 2,
+                l3 = TAB_SIZE * 3,
                 args = self.consumer_init_args,
                 ffi_init = self.init_fn_name,
                 ffi_args = self.ffi_init_args,
-            )
+            ))
         } else {
-            format!(
+            Some(format!(
                 "{spacer:l1$}public init(
 {args}
 {spacer:l1$}) {{
@@ -98,12 +98,12 @@ impl ConsumerStruct {
 {spacer:l2$})
 {spacer:l1$}}}",
                 spacer = " ",
-                l1 = super::TAB_SIZE,
-                l2 = super::TAB_SIZE * 2,
+                l1 = TAB_SIZE,
+                l2 = TAB_SIZE * 2,
                 args = self.consumer_init_args,
                 ffi_init = self.init_fn_name,
                 ffi_args = self.ffi_init_args,
-            )
+            ))
         }
     }
 }
@@ -121,22 +121,35 @@ impl ConsumerType for ConsumerStruct {
         result.push_str(&format!(
 "public final class {class} {{
 
-    internal let pointer: OpaquePointer
-
-{init_impl}
-
-    internal init(_ pointer: OpaquePointer) {{
-        self.pointer = pointer
-    }}
-
-    deinit {{
-        {free_fn_name}(pointer)
-    }}
-{getters}
-}}
-",
+{spacer:l1$}internal let pointer: OpaquePointer",
+            spacer = " ",
+            l1 = TAB_SIZE,
             class = self.type_name,
-            init_impl = self.init_impl(),
+        ));
+        // Newline after the internal property declaration, and an empty line after that.
+        result.push_str("\n\n");
+
+        // If we have an init_impl, push it and another pair of newlines.
+        if let Some(init_impl) = self.init_impl(){
+            result.push_str(&init_impl);
+            result.push_str("\n\n");
+        }
+
+        // Push the internal init, deinit, and getters.
+        result.push_str(&format!(
+"{spacer:l1$}internal init(_ pointer: OpaquePointer) {{
+{spacer:l2$}self.pointer = pointer
+{spacer:l1$}}}
+
+{spacer:l1$}deinit {{
+{spacer:l2$}{free_fn_name}(pointer)
+{spacer:l1$}}}
+
+{getters}
+}}",
+            spacer = " ",
+            l1 = TAB_SIZE,
+            l2 = TAB_SIZE * 2,
             free_fn_name = self.free_fn_name,
             getters = self.consumer_getters
         ));
@@ -145,49 +158,54 @@ impl ConsumerType for ConsumerStruct {
 
     fn native_data_impl(&self) -> String {
         format!(
-            "
-extension {}: NativeData {{
-    public typealias ForeignType = OpaquePointer?
+"// MARK: - NativeData
+extension {type_name}: NativeData {{
+{spacer:l1$}public typealias ForeignType = OpaquePointer?
 
-    /// `clone()` will clone this instance (in Rust) and return a pointer to it that can be 
-    /// used when calling a Rust function that takes ownership of an instance (like an initializer
-    /// with a parameter of this type).
-    public func clone() -> ForeignType {{
-        return {}(pointer)
-    }}
+{spacer:l1$}/// `clone()` will clone this instance (in Rust) and return a pointer to it that can be 
+{spacer:l1$}/// used when calling a Rust function that takes ownership of an instance (like an initializer
+{spacer:l1$}/// with a parameter of this type).
+{spacer:l1$}public func clone() -> ForeignType {{
+{spacer:l2$}return {clone_fn_name}(pointer)
+{spacer:l1$}}}
 
-    /// `borrowReference()` will pass this instance's `pointer` to Rust as a reference. This
-    /// must only be used when calling Rust functions that take a borrowed reference; otherwise,
-    /// Rust will free `pointer` while this instance retains it.
-    public func borrowReference() -> ForeignType {{
-        return pointer
-    }}
+{spacer:l1$}/// `borrowReference()` will pass this instance's `pointer` to Rust as a reference. This
+{spacer:l1$}/// must only be used when calling Rust functions that take a borrowed reference; otherwise,
+{spacer:l1$}/// Rust will free `pointer` while this instance retains it.
+{spacer:l1$}public func borrowReference() -> ForeignType {{
+{spacer:l2$}return pointer
+{spacer:l1$}}}
 
-    /// Initializes an instance of this type from a pointer to an instance of the Rust type.
-    public static func fromRust(_ foreignObject: ForeignType) -> Self {{
-        return Self(foreignObject!)
-    }}
-}}
-",
-            self.type_name, self.clone_fn_name,
+{spacer:l1$}/// Initializes an instance of this type from a pointer to an instance of the Rust type.
+{spacer:l1$}public static func fromRust(_ foreignObject: ForeignType) -> Self {{
+{spacer:l2$}return Self(foreignObject!)
+{spacer:l1$}}}
+}}",
+            spacer = " ",
+            l1 = TAB_SIZE,
+            l2 = TAB_SIZE * 2,
+            type_name = self.type_name,
+            clone_fn_name = self.clone_fn_name,
         )
     }
 
     fn ffi_array_impl(&self) -> String {
         format!(
-            "
+"// MARK: - FFIArray
 extension {array_name}: FFIArray {{
-    public typealias Value = OpaquePointer?
+{spacer:l1$}public typealias Value = OpaquePointer?
 
-    public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
-        {array_init}(ptr, len)
-    }}
+{spacer:l1$}public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
+{spacer:l2$}{array_init}(ptr, len)
+{spacer:l1$}}}
 
-    public static func free(_ array: Self) {{
-        {array_free}(array)
-    }}
-}}
-",
+{spacer:l1$}public static func free(_ array: Self) {{
+{spacer:l2$}{array_free}(array)
+{spacer:l1$}}}
+}}",
+            spacer = " ",
+            l1 = TAB_SIZE,
+            l2 = TAB_SIZE * 2,
             array_name = self.array_name(),
             array_init = self.array_init(),
             array_free = self.array_free(),
@@ -196,47 +214,51 @@ extension {array_name}: FFIArray {{
 
     fn native_array_data_impl(&self) -> String {
         format!(
-            "
-extension {}: NativeArrayData {{
-    public typealias FFIArrayType = {}
-}}
-",
-            self.type_name,
-            self.array_name()
+"// MARK: - NativeArrayData
+extension {type_name}: NativeArrayData {{
+{spacer:l1$}public typealias FFIArrayType = {array_name}
+}}",
+            spacer = " ",
+            l1 = TAB_SIZE,
+            type_name = self.type_name,
+            array_name = self.array_name()
         )
     }
 
     fn option_impl(&self) -> String {
         format!(
-            "
-public extension Optional where Wrapped == {} {{
-    func clone() -> OpaquePointer? {{
-        switch self {{
-        case let .some(value):
-            return value.clone()
-        case .none:
-            return nil
-        }}
-    }}
+"// MARK: - Optional
+public extension Optional where Wrapped == {type_name} {{
+{spacer:l1$}func clone() -> OpaquePointer? {{
+{spacer:l2$}switch self {{
+{spacer:l2$}case let .some(value):
+{spacer:l3$}return value.clone()
+{spacer:l2$}case .none:
+{spacer:l3$}return nil
+{spacer:l2$}}}
+{spacer:l1$}}}
 
-    func borrowReference() -> OpaquePointer? {{
-        switch self {{
-        case let .some(value):
-            return value.borrowReference()
-        case .none:
-            return nil
-        }}
-    }}
+{spacer:l1$}func borrowReference() -> OpaquePointer? {{
+{spacer:l2$}switch self {{
+{spacer:l2$}case let .some(value):
+{spacer:l3$}return value.borrowReference()
+{spacer:l2$}case .none:
+{spacer:l3$}return nil
+{spacer:l2$}}}
+{spacer:l1$}}}
 
-    static func fromRust(_ ptr: OpaquePointer?) -> Self {{
-        guard let ptr = ptr else {{
-            return .none
-        }}
-        return Wrapped.fromRust(ptr)
-    }}
-}}
-",
-            self.type_name
+{spacer:l1$}static func fromRust(_ ptr: OpaquePointer?) -> Self {{
+{spacer:l2$}guard let ptr = ptr else {{
+{spacer:l3$}return .none
+{spacer:l2$}}}
+{spacer:l2$}return Wrapped.fromRust(ptr)
+{spacer:l1$}}}
+}}",
+            spacer = " ",
+            l1 = TAB_SIZE,
+            l2 = TAB_SIZE * 2,
+            l3 = TAB_SIZE * 3,
+            type_name = self.type_name,
         )
     }
 
