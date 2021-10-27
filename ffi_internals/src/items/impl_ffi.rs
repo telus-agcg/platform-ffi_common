@@ -90,7 +90,7 @@ impl From<ImplInputs> for ImplFFI {
                         generics: inputs.generics.clone(),
                     },
                     local_aliases: aliases.clone(),
-                    doc_comments: crate::parsing::parse_doc_comments(&*item.attrs),
+                    doc_comments: crate::parsing::clone_doc_comments(&*item.attrs),
                 })
             })
             .collect();

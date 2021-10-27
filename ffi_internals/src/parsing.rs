@@ -85,7 +85,7 @@ pub fn is_repr_c(attrs: &[Attribute]) -> bool {
 /// attributes only.
 ///
 #[must_use]
-pub fn parse_doc_comments(attrs: &[Attribute]) -> Vec<Attribute> {
+pub fn clone_doc_comments(attrs: &[Attribute]) -> Vec<Attribute> {
     let doc_path: Path = syn::parse_str("doc").unwrap_or_abort();
     attrs
         .iter()

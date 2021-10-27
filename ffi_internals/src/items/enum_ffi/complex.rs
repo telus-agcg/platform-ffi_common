@@ -116,7 +116,7 @@ impl<'a> EnumFFI<'a> {
                 VariantFFI {
                     ident: &variant.ident,
                     fields,
-                    doc_comments: crate::parsing::parse_doc_comments(&*variant.attrs),
+                    doc_comments: crate::parsing::clone_doc_comments(&*variant.attrs),
                 }
             })
             .collect();

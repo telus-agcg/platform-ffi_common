@@ -384,7 +384,7 @@ impl<'a> From<FieldInputs<'a>> for FieldFFI<'a> {
             field_source: inputs.field_source,
             native_type_data,
             attributes,
-            doc_comments: parsing::parse_doc_comments(inputs.field_attrs),
+            doc_comments: parsing::clone_doc_comments(inputs.field_attrs),
         }
     }
 }

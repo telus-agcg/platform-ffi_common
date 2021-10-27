@@ -130,7 +130,7 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
             receiver,
             parameters: arguments,
             return_type,
-            doc_comments: crate::parsing::parse_doc_comments(&*inputs.method.attrs),
+            doc_comments: crate::parsing::clone_doc_comments(&*inputs.method.attrs),
         }
     }
 }
@@ -183,7 +183,7 @@ impl From<(&ItemFn, &FnAttributes)> for FnFFI {
             receiver,
             parameters: arguments,
             return_type,
-            doc_comments: crate::parsing::parse_doc_comments(&*method.attrs),
+            doc_comments: crate::parsing::clone_doc_comments(&*method.attrs),
         }
     }
 }
