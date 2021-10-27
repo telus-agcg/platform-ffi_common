@@ -12,7 +12,7 @@ use parsing::FieldAttributes;
 use proc_macro2::TokenStream;
 use proc_macro_error::abort;
 use quote::{format_ident, quote};
-use syn::{spanned::Spanned, Fields, Ident};
+use syn::{spanned::Spanned, Attribute, Fields, Ident};
 
 #[derive(Debug, Clone)]
 pub(crate) enum FieldSource<'a> {
@@ -47,6 +47,10 @@ pub struct FieldFFI<'a> {
     /// The FFI helper attribute annotations on this field.
     ///
     pub attributes: FieldAttributes,
+
+    /// Documentation comments on this field.
+    ///
+    pub(crate) doc_comments: Vec<Attribute>,
 }
 
 impl<'a> FieldFFI<'a> {
@@ -249,7 +253,7 @@ pub(super) struct FieldInputs<'a> {
     pub field_ident: FieldIdent,
     pub field_type: &'a syn::Type,
     pub field_source: FieldSource<'a>,
-    pub field_attrs: &'a [syn::Attribute],
+    pub field_attrs: &'a [Attribute],
     pub alias_modules: &'a [String],
 }
 
@@ -380,6 +384,7 @@ impl<'a> From<FieldInputs<'a>> for FieldFFI<'a> {
             field_source: inputs.field_source,
             native_type_data,
             attributes,
+            doc_comments: parsing::clone_doc_comments(inputs.field_attrs),
         }
     }
 }

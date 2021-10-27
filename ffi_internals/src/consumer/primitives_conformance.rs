@@ -33,14 +33,14 @@ pub(super) fn generate(native_type: &str, ffi_type: &str, consumer_type: &str) -
         consumer_type_base(consumer_type, ffi_type),
         consumer_array_type(consumer_type, &format!("FFIArray{}", native_type)),
     ]
-    .join("")
+    .join("\n\n")
 }
 
 /// Conversion from the consumer's native array type to the `FFIArray` type for `native_type`.
 ///
 fn array_conformance(array_name: &str, ffi_type: &str, init: &str, free: &str) -> String {
     format!(
-        "
+        "// MARK: - FFIArray
 extension {}: FFIArray {{
     public typealias Value = {}
 
@@ -51,8 +51,7 @@ extension {}: FFIArray {{
     public static func free(_ array: Self) {{
         {}(array)
     }}
-}}
-",
+}}",
         array_name, ffi_type, init, free
     )
 }
@@ -61,7 +60,7 @@ extension {}: FFIArray {{
 ///
 fn option_conformance(consumer_type: &str, ffi_type: &str, init: &str, free: &str) -> String {
     format!(
-        "
+        "// MARK: - Optional
 public extension Optional where Wrapped == {} {{
     func clone() -> UnsafeMutablePointer<{}>? {{
         switch self {{
@@ -95,8 +94,7 @@ public extension Optional where Wrapped == {} {{
     static func free(_ option: UnsafePointer<{}>?) {{
         {}(option)
     }}
-}}
-",
+}}",
         consumer_type, ffi_type, init, ffi_type, init, ffi_type, ffi_type, free
     )
 }
@@ -105,7 +103,7 @@ public extension Optional where Wrapped == {} {{
 ///
 fn consumer_type_base(consumer_type: &str, ffi_type: &str) -> String {
     format!(
-        "
+        "// MARK: - NativeData
 extension {}: NativeData {{
     public typealias ForeignType = {}
 
@@ -120,8 +118,7 @@ extension {}: NativeData {{
     public static func fromRust(_ foreignObject: ForeignType) -> Self {{
         return foreignObject
     }}
-}}
-",
+}}",
         consumer_type, ffi_type
     )
 }
@@ -130,11 +127,10 @@ extension {}: NativeData {{
 ///
 fn consumer_array_type(consumer_type: &str, ffi_array_type: &str) -> String {
     format!(
-        "
+        "// MARK: - NativeArrayData
 extension {}: NativeArrayData {{
     public typealias FFIArrayType = {}
-}}
-",
+}}",
         consumer_type, ffi_array_type
     )
 }

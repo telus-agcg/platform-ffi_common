@@ -121,7 +121,8 @@ impl From<syn::AttributeArgs> for ImplAttributes {
                         m.span(),
                         "Unsupported ffi attribute {:?} -- expected `ffi_imports`, \
 `consumer_imports`, `raw_types`, `description`, or `generic`, ",
-                        m.path())
+                        m.path()
+                    )
                 }
             } else {
                 abort!(arg.span(), "Unsupported ffi attribute -- {:?}.", arg)

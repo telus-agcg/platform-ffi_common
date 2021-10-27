@@ -375,6 +375,7 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
     let type_name = ast.ident.clone();
     let module_name = format_ident!("{}_ffi", &type_name.to_string().to_snake_case());
     let struct_attributes = parsing::StructAttributes::from(&*ast.attrs);
+    let doc_comments = ffi_internals::parsing::clone_doc_comments(&*ast.attrs);
     match &ast.data {
         Data::Struct(data) => struct_attributes.custom_attributes.as_ref().map_or_else(
             || {
@@ -386,6 +387,7 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
                     consumer_imports: &struct_attributes.consumer_imports,
                     ffi_mod_imports: &struct_attributes.ffi_mod_imports,
                     forbid_memberwise_init: struct_attributes.forbid_memberwise_init,
+                    doc_comments: &doc_comments,
                 });
                 (&ConsumerStruct::from(&ffi)).write_output(&out_dir);
                 proc_macro2::TokenStream::from(ffi)
@@ -399,6 +401,7 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
                     &*struct_attributes.consumer_imports,
                     &*struct_attributes.ffi_mod_imports,
                     struct_attributes.forbid_memberwise_init,
+                    &doc_comments,
                 );
                 (&ConsumerStruct::from(&ffi)).write_output(&out_dir);
                 proc_macro2::TokenStream::from(ffi)
@@ -417,6 +420,7 @@ fn impl_ffi_macro(ast: &DeriveInput) -> TokenStream {
                     &*struct_attributes.alias_modules,
                     &*struct_attributes.consumer_imports,
                     &*struct_attributes.ffi_mod_imports,
+                    &doc_comments,
                 );
                 (&consumer_enum::ComplexConsumerEnum::from(&ffi)).write_output(&out_dir);
                 proc_macro2::TokenStream::from(ffi)
@@ -527,6 +531,7 @@ pub fn expose_impl(attr: TokenStream, item: TokenStream) -> TokenStream {
         generics: impl_attributes.generics,
         impl_description,
         type_name,
+        doc_comments: parsing::clone_doc_comments(&*item_impl.attrs),
     });
     let out_dir = out_dir();
     let file_name = impl_ffi.consumer_file_name();

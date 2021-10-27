@@ -7,7 +7,7 @@ use crate::parsing::CustomAttributes;
 use heck::SnakeCase;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{Ident, Path, Type};
+use syn::{Attribute, Ident, Path, Type};
 
 /// Represents the components of a struct that has a custom FFI implementation (defined at
 /// `custom_attributes.path`).
@@ -50,12 +50,16 @@ pub struct StructFFI<'a> {
     /// generated memberwise init bypasses those restrictions.
     ///
     pub forbid_memberwise_init: bool,
+    /// Documentation comments on this struct.
+    ///
+    pub doc_comments: &'a [Attribute],
 }
 
 impl<'a> StructFFI<'a> {
     /// Create a new `StructFFI` from derive macro inputs.
     ///
     #[must_use]
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         type_name: &'a Ident,
         module_name: &'a Ident,
@@ -64,6 +68,7 @@ impl<'a> StructFFI<'a> {
         consumer_imports: &'a [Path],
         ffi_mod_imports: &'a [Path],
         forbid_memberwise_init: bool,
+        doc_comments: &'a [Attribute],
     ) -> Self {
         let init_fn_name = format_ident!("{}_init", &type_name.to_string().to_snake_case());
         let free_fn_name = format_ident!("{}_free", &type_name.to_string().to_snake_case());
@@ -87,6 +92,7 @@ impl<'a> StructFFI<'a> {
             free_fn_name,
             clone_fn_name,
             forbid_memberwise_init,
+            doc_comments,
         }
     }
 }

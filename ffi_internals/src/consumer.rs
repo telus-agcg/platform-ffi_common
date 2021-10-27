@@ -29,6 +29,8 @@
 #![allow(clippy::module_name_repetitions)]
 
 use heck::CamelCase;
+use proc_macro_error::{abort, ResultExt};
+use syn::{spanned::Spanned, Attribute};
 
 mod error;
 mod primitives_conformance;
@@ -38,7 +40,6 @@ pub mod consumer_fn;
 pub mod consumer_impl;
 pub mod consumer_struct;
 pub use error::Error;
-use quote::spanned::Spanned;
 
 /// A warning to add to the top of each file. Could add a date or customize the comment format if we
 /// ever want to.
@@ -66,6 +67,55 @@ pub fn write_consumer_foundation(consumer_dir: &str, language: &str) -> Result<(
     write_support_files(consumer_dir, language)?;
     write_primitive_conformances(consumer_dir)?;
     Ok(())
+}
+
+/// Converts a slice of doc comment attributes to a string of correctly formatted consumer comments.
+///
+/// `attrs` must be doc comments, or this will abort the proc macro.
+/// `indentation_level` should be the number of levels that the type on this comment is nested. It
+/// will be multiplied by `TAB_SIZE`.
+///
+/// Note that the returned `String` ends in a newline, so you don't need to (and shouldn't) push an
+/// additional newline before pushing the consumer content.
+///
+fn consumer_docs_from(attrs: &[Attribute], indentation_level: usize) -> String {
+    let mut docs = attrs
+        .iter()
+        .filter_map(|attr| {
+            if let syn::Meta::NameValue(meta) = attr
+                .parse_meta()
+                .expect_or_abort("Cannot parse meta for doc comment.")
+            {
+                if let syn::Lit::Str(lit) = meta.lit {
+                    let doc = lit.value();
+                    if doc.is_empty() {
+                        return None;
+                    }
+                    return Some(doc);
+                }
+            }
+            abort!(attr.span(), "Unexpected meta for doc comment attribute.")
+        })
+        .map(|doc| format_doc(&doc, indentation_level))
+        .collect::<Vec<String>>()
+        .join("\n");
+    if !docs.is_empty() {
+        docs.push('\n');
+    }
+    docs
+}
+
+fn format_doc(doc: &str, indentation_level: usize) -> String {
+    if indentation_level == 0 {
+        format!("///{}", doc)
+    } else {
+        format!(
+            "{spacer:length$}///{doc}",
+            spacer = " ",
+            length = TAB_SIZE * indentation_level,
+            doc = doc
+        )
+    }
 }
 
 /// Reads the protocol file for `language` and writes it to `consumer_dir/FFIProtocols.language`.
@@ -122,20 +172,31 @@ pub trait ConsumerType {
 
     /// The type definition.
     ///
-    fn type_definition(&self) -> String;
+    /// This should not include leading or trailing newlines.
+    ///
+    fn type_definition(&self) -> Option<String>;
 
     /// The implementation of the `NativeData` protocol.
+    ///
+    /// This should not include leading or trailing newlines.
+    ///
     fn native_data_impl(&self) -> String;
 
     /// The implementation of the `FFIArray` protocol.
+    ///
+    /// This should not include leading or trailing newlines.
     ///
     fn ffi_array_impl(&self) -> String;
 
     /// The implementation of the `NativeArrayData` protocol.
     ///
+    /// This should not include leading or trailing newlines.
+    ///
     fn native_array_data_impl(&self) -> String;
 
     /// The implementation for handling optional instances of this type.
+    ///
+    /// This should not include leading or trailing newlines.
     ///
     fn option_impl(&self) -> String;
 
@@ -161,17 +222,16 @@ where
     C: ConsumerType,
 {
     fn write_output(&self, out_dir: &str) {
-        let contents = [
-            header_and_imports(self.consumer_imports()),
-            self.type_definition(),
-            self.native_data_impl(),
-            self.ffi_array_impl(),
-            self.native_array_data_impl(),
-            self.option_impl(),
-        ]
-        .join("");
+        let mut contents = vec![header_and_imports(self.consumer_imports())];
+        if let Some(type_def) = self.type_definition() {
+            contents.push(type_def);
+        }
+        contents.push(self.native_data_impl());
+        contents.push(self.ffi_array_impl());
+        contents.push(self.native_array_data_impl());
+        contents.push(self.option_impl());
         let file_name = format!("{}.swift", self.type_name());
-        crate::write_consumer_file(&file_name, contents, out_dir)
+        crate::write_consumer_file(&file_name, contents.join("\n\n"), out_dir)
             .unwrap_or_else(|err| proc_macro_error::abort!("Error writing consumer file: {}", err));
     }
 }
@@ -185,7 +245,7 @@ where
 fn get_segment_ident(segment: Option<&syn::PathSegment>) -> &syn::Ident {
     match segment {
         Some(segment) => &segment.ident,
-        None => proc_macro_error::abort!(segment.__span(), "Missing path segment"),
+        None => proc_macro_error::abort!(segment.span(), "Missing path segment"),
     }
 }
 
@@ -211,21 +271,18 @@ fn build_imports(paths: &[syn::Path]) -> Vec<String> {
 }
 
 fn header_and_imports(additional_imports: &[syn::Path]) -> String {
-    let mut output = [
-        HEADER,
+    let mut output = HEADER.to_string();
+    output.push_str("\n\n");
+    output.push_str(
         &option_env!("FFI_COMMON_FRAMEWORK")
             .map(|f| format!("import {}", f))
             .unwrap_or_default(),
-    ]
-    .join("\n");
+    );
 
     if !additional_imports.is_empty() {
         output.push('\n');
         output.push_str(&build_imports(additional_imports).join("\n"));
     }
-
-    // Add one empty line as a spacer.
-    output.push('\n');
 
     output
 }
