@@ -3,25 +3,25 @@ members = [
     "ffi_common",
     "ffi_core",
     "ffi_derive",
-    "ffi_internals"
+    "ffi_internals",
 ]
 
-# [patch."agrian-registry".ffi_common]
-# path = "./ffi_common"
-# # git = "ssh://git@github.com/agrian-inc/ffi_common.git"
-# # branch = "develop"
+[patch."agrian-registry".ffi_common]
+path = "./ffi_common"
+# git = "ssh://git@github.com/agrian-inc/ffi_common.git"
+# branch = "feature/DEV-17613_support_non_reprc_enums"
 
-# [patch."agrian-registry".ffi_core]
-# path = "./ffi_core"
-# # git = "ssh://git@github.com/agrian-inc/ffi_common.git"
-# # branch = "develop"
+[patch."agrian-registry".ffi_core]
+path = "./ffi_core"
+# git = "ssh://git@github.com/agrian-inc/ffi_common.git"
+# branch = "feature/DEV-17613_support_non_reprc_enums"
 
-# [patch."agrian-registry".ffi_derive]
-# path = "./ffi_derive"
-# # git = "ssh://git@github.com/agrian-inc/ffi_common.git"
-# # branch = "develop"
+[patch."agrian-registry".ffi_derive]
+path = "./ffi_derive"
+# git = "ssh://git@github.com/agrian-inc/ffi_common.git"
+# branch = "feature/DEV-17613_support_non_reprc_enums"
 
-# [patch."agrian-registry".ffi_internals]
-# path = "./ffi_internals"
-# # git = "ssh://git@github.com/agrian-inc/ffi_common.git"
-# # branch = "develop"
+[patch."agrian-registry".ffi_internals]
+path = "./ffi_internals"
+# git = "ssh://git@github.com/agrian-inc/ffi_common.git"
+# branch = "feature/DEV-17613_support_non_reprc_enums"

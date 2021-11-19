@@ -81,6 +81,23 @@ pub fn is_repr_c(attrs: &[Attribute]) -> bool {
     })
 }
 
+/// Filters and clones a slice of attributes into a `Vec<Attribute>` containing doc comment
+/// attributes only.
+///
+#[must_use]
+pub fn clone_doc_comments(attrs: &[Attribute]) -> Vec<Attribute> {
+    let doc_path: Path = syn::parse_str("doc").unwrap_or_abort();
+    attrs
+        .iter()
+        .filter_map(|attr| {
+            if attr.path != doc_path {
+                return None;
+            }
+            Some(attr.clone())
+        })
+        .collect()
+}
+
 /// Figures out the names and types of all of the arguments in the custom FFI initializer and
 /// getters for `type_name` at `path`.
 ///

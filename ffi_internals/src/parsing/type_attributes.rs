@@ -129,14 +129,10 @@ impl From<TypeAttributes> for crate::type_ffi::TypeFFI {
                 let ident = segment.ident.clone();
                 if let Ok(generic) = SupportedGeneric::try_from(&*ident.to_string()) {
                     match generic {
-                        SupportedGeneric::Option => {
-                            unparsed.is_option = true;
-                        }
+                        SupportedGeneric::Option => unparsed.is_option = true,
                         SupportedGeneric::Vec => unparsed.is_collection = true,
                         SupportedGeneric::Result => unparsed.is_result = true,
-                        SupportedGeneric::Cow => {
-                            unparsed.is_cow = true;
-                        }
+                        SupportedGeneric::Cow => unparsed.is_cow = true,
                     };
                     // Dig the argument type out of the generics for the limited cases we're
                     // supporting right now and update `unparsed` with its element type.

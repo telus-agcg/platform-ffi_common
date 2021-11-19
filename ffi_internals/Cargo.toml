@@ -1,6 +1,6 @@
 [package]
 name = "ffi_internals"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["Nicholas Smillie <nicholas@agrian.com>"]
 edition = "2018"
 publish = ["agrian-registry"]
@@ -10,7 +10,7 @@ repository = "https://github.com/agrian-inc/ffi_common"
 
 [dependencies]
 chrono = "0.4"
-ffi_core = { version = "0.6.0", registry = "agrian-registry" }
+ffi_core = { version = "0.7.0", registry = "agrian-registry" }
 heck = "0.3"
 lazy_static = "1.4.0"
 paste = "1.0.0"
@@ -22,3 +22,6 @@ serde_json = "1.0"
 syn = { version = "1.0", features = ["full", "extra-traits"] }
 thiserror = "1.0"
 uuid = { version = "0.8", features = ["v4"] }
+
+[dev-dependencies]
+pretty_assertions = "1.0"

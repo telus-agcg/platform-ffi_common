@@ -25,9 +25,8 @@
 
 pub mod alias_resolution;
 pub mod consumer;
-pub mod impl_internals;
+pub mod items;
 pub mod parsing;
-pub mod struct_internals;
 pub mod type_ffi;
 
 // Reexports

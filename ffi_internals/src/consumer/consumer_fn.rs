@@ -2,9 +2,10 @@
 //! Generates a wrapping function in the consumer's language.
 //!
 
+use super::TAB_SIZE;
 use crate::{
     heck::MixedCase,
-    impl_internals::fn_ffi::{FnFFI, FnReceiver},
+    items::fn_ffi::{FnFFI, FnReceiver},
     syn::Ident,
 };
 
@@ -12,10 +13,14 @@ impl FnFFI {
     /// Generates a consumer function for calling the foreign function produced by
     /// `self.generate_ffi(...)`.
     ///
-    pub(super) fn generate_consumer(&self, module_name: &Ident) -> String {
+    pub(super) fn generate_consumer(
+        &self,
+        module_name: &Ident,
+        module_docs: Option<&[syn::Attribute]>,
+    ) -> String {
         // Include the keyword `static` if this function doesn't take a receiver.
         let static_keyword = if self.receiver == FnReceiver::None {
-            "static"
+            "static "
         } else {
             ""
         };
@@ -24,12 +29,17 @@ impl FnFFI {
                 || (String::new(), String::new(), String::new()),
                 crate::type_ffi::TypeFFI::consumer_return_type_components,
             );
-        format!(
-            "
-    {static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
-        {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
-    }}
-",
+        let mut result = module_docs.map_or(String::default(), |docs| {
+            crate::consumer::consumer_docs_from(docs, 1)
+        });
+        result.push_str(&crate::consumer::consumer_docs_from(&*self.doc_comments, 1));
+        result.push_str(&format!(
+"{spacer:l1$}{static_keyword}func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
+{spacer:l2$}{return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
+{spacer:l1$}}}",
+            spacer = " ",
+            l1 = TAB_SIZE,
+            l2 = TAB_SIZE * 2,
             static_keyword = static_keyword,
             consumer_fn_name = self.fn_name.to_string().to_mixed_case(),
             consumer_parameters = self.consumer_parameters(),
@@ -38,7 +48,8 @@ impl FnFFI {
             ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
             ffi_parameters = self.ffi_calling_arguments(),
             close_conversion = close_conversion,
-        )
+        ));
+        result
     }
 
     /// Generates the contents of a consumer extension for this function, extending the original
@@ -50,7 +61,7 @@ impl FnFFI {
     pub fn generate_consumer_extension(&self, consumer_type: &str, module_name: &Ident) -> String {
         // Include the keyword `static` if this function doesn't take a receiver.
         let static_keyword = if self.receiver == FnReceiver::None {
-            "static"
+            "static "
         } else {
             ""
         };
@@ -60,28 +71,29 @@ impl FnFFI {
                 crate::type_ffi::TypeFFI::consumer_return_type_components,
             );
 
-        let extension = format!(
-            "
-extension {consumer_type} {{
+        let mut result = format!("extension {} {{", consumer_type);
+        result.push('\n');
+        result.push_str(&crate::consumer::consumer_docs_from(&*self.doc_comments, 1));
+        result.push_str(&format!(
+"{spacer:l1$}{static_keyword}func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
+{spacer:l2$}{return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
+{spacer:l1$}}}",
+                        spacer = " ",
+                        l1 = TAB_SIZE,
+                        l2 = TAB_SIZE * 2,
+                        static_keyword = static_keyword,
+                        consumer_fn_name = self.fn_name.to_string().to_mixed_case(),
+                        consumer_parameters = self.consumer_parameters(),
+                        return_sig = return_sig,
+                        return_conversion = return_conversion,
+                        ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
+                        ffi_parameters = self.ffi_calling_arguments(),
+                        close_conversion = close_conversion,
+                    ));
+        result.push('\n');
+        result.push('}');
 
-    {static_keyword} func {consumer_fn_name}({consumer_parameters}) {return_sig} {{
-        {return_conversion}{ffi_fn_name}({ffi_parameters}){close_conversion}
-    }}
-
-}}
-",
-            static_keyword = static_keyword,
-            consumer_type = consumer_type,
-            consumer_fn_name = self.fn_name.to_string().to_mixed_case(),
-            consumer_parameters = self.consumer_parameters(),
-            return_sig = return_sig,
-            return_conversion = return_conversion,
-            ffi_fn_name = self.ffi_fn_name(module_name).to_string(),
-            ffi_parameters = self.ffi_calling_arguments(),
-            close_conversion = close_conversion,
-        );
-
-        [super::header_and_imports(&[]), extension].join("")
+        [super::header_and_imports(&[]), result].join("\n")
     }
 
     fn consumer_parameters(&self) -> String {
