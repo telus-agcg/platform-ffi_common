@@ -4,14 +4,14 @@
 //!
 
 use crate::{
-    parsing::{FieldAttributes, TypeAttributes},
+    parsing::{FieldAttributes, FnAttributes, TypeAttributes},
     type_ffi::{Context, TypeFFI, TypeIdentifier},
 };
 use lazy_static::__Deref;
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 use std::collections::HashMap;
-use syn::{spanned::Spanned, Ident, ImplItemMethod, ItemFn, PatType, Type};
+use syn::{spanned::Spanned, Attribute, Ident, ImplItemMethod, ItemFn, PatType, Type};
 
 /// Describes the various kinds of receivers we may encounter when parsing a function.
 ///
@@ -49,6 +49,10 @@ pub struct FnFFI {
 
     /// The return type for this function, if any.
     pub return_type: Option<TypeFFI>,
+
+    /// Documentation comments on this fn.
+    ///
+    pub doc_comments: Vec<Attribute>,
 }
 
 /// Representes the inputs for building a `FnFFI`.
@@ -57,17 +61,19 @@ pub struct FnFFIInputs<'a> {
     /// The impl's parsed data structure.
     ///
     pub method: &'a ImplItemMethod,
-    /// Any types referenced in the impl that should be passed through the FFI without wrapping,
-    /// such as numerics or `repr(C)` enums/structs.
+
+    /// Data from helper attributes on this function.
     ///
-    pub raw_types: Vec<Ident>,
-    /// The type of `Self` in this impl.
-    ///
-    pub self_type: Ident,
+    pub fn_attributes: &'a FnAttributes,
+
     /// A map of local aliases, where the key is the newtype's identifier and the value is the
     /// underlying type.
     ///
     pub local_aliases: HashMap<Ident, Type>,
+
+    /// Documentation comments on this fn that will be added to the FFI fn.
+    ///
+    pub doc_comments: Vec<Attribute>,
 }
 
 impl<'a> FnFFIInputs<'a> {
@@ -99,8 +105,7 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
                     syn::FnArg::Typed(arg) => {
                         acc.0.push(FnParameterFFI::from(FnParameterFFIInputs {
                             arg,
-                            raw_types: inputs.raw_types.clone(),
-                            self_type: Some(inputs.self_type.clone()),
+                            fn_attributes: inputs.fn_attributes,
                         }));
                     }
                 }
@@ -114,8 +119,8 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
                 let dealiased = inputs.strip_local_alias(&*ty);
                 Some(TypeFFI::from(TypeAttributes::initial(
                     dealiased,
-                    inputs.raw_types,
-                    Some(inputs.self_type),
+                    inputs.fn_attributes.raw_types.clone(),
+                    Some(inputs.fn_attributes.extend_type.clone()),
                 )))
             }
         };
@@ -125,11 +130,12 @@ impl<'a> From<FnFFIInputs<'a>> for FnFFI {
             receiver,
             parameters: arguments,
             return_type,
+            doc_comments: crate::parsing::clone_doc_comments(&*inputs.method.attrs),
         }
     }
 }
 
-impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
+impl From<(&ItemFn, &FnAttributes)> for FnFFI {
     /// Converts a tuple of `syn::ItemFn` (the function to build an FFI for) and `Vec<Ident>` (a
     /// collection of raw types that can be exposed directly) to a `FnFFI`.
     ///
@@ -138,8 +144,8 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
     /// captures additional information available in the impl that may be necessary to build the
     /// FFI function.
     ///
-    fn from(data: (&ItemFn, Vec<Ident>)) -> Self {
-        let (method, raw_types) = data;
+    fn from(data: (&ItemFn, &FnAttributes)) -> Self {
+        let (method, fn_attributes) = data;
         let fn_name = method.sig.ident.clone();
         let (arguments, receiver) = method.sig.inputs.iter().fold(
             (Vec::<FnParameterFFI>::new(), FnReceiver::None),
@@ -155,8 +161,7 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
                     syn::FnArg::Typed(arg) => {
                         acc.0.push(FnParameterFFI::from(FnParameterFFIInputs {
                             arg,
-                            raw_types: raw_types.clone(),
-                            self_type: None,
+                            fn_attributes,
                         }));
                     }
                 }
@@ -168,8 +173,8 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
             syn::ReturnType::Default => None,
             syn::ReturnType::Type(_token, ty) => Some(TypeFFI::from(TypeAttributes::initial(
                 *ty.clone(),
-                raw_types,
-                None,
+                fn_attributes.raw_types.clone(),
+                Some(fn_attributes.extend_type.clone()),
             ))),
         };
 
@@ -178,6 +183,7 @@ impl From<(&ItemFn, Vec<Ident>)> for FnFFI {
             receiver,
             parameters: arguments,
             return_type,
+            doc_comments: crate::parsing::clone_doc_comments(&*method.attrs),
         }
     }
 }
@@ -237,11 +243,6 @@ impl FnFFI {
                 let name = arg.name.clone();
                 let ty = arg.native_type_data.ffi_type(None, Context::Argument);
                 let signature_parameter = quote!(#name: #ty, );
-                // TODO: This assumes a collection type should always be dereferenced to a slice
-                // and borrowed when passed to the native function, which is not necessarily the
-                // case. We should be able to figure that out from the syn collection types...we
-                // just need to support them more completely instead of stripping down to "is a
-                // collection".
                 let symbols = if arg.native_type_data.is_vec {
                     quote!(&*)
                 } else {
@@ -342,7 +343,9 @@ impl FnFFI {
         } else {
             quote!(#native_call(#calling_args);)
         };
+        let doc_comments = &*self.doc_comments;
         quote! {
+            #(#doc_comments)*
             #[no_mangle]
             pub unsafe extern "C" fn #ffi_fn_name(#signature_args) -> #return_type {
                 #parameter_conversions
@@ -378,12 +381,10 @@ pub struct FnParameterFFIInputs<'a> {
     /// The parameter argument, as in `foo: i32`.
     ///
     arg: &'a PatType,
-    /// Any types that we should expose directly through the FFI.
+
+    /// Data from helper attributes on this function.
     ///
-    raw_types: Vec<Ident>,
-    /// The type of `self` in this context, if available.
-    ///
-    self_type: Option<Ident>,
+    fn_attributes: &'a FnAttributes,
 }
 
 impl<'a> From<FnParameterFFIInputs<'a>> for FnParameterFFI {
@@ -396,10 +397,17 @@ impl<'a> From<FnParameterFFIInputs<'a>> for FnParameterFFI {
                 "Anonymous parameter (not allowed in Rust 2018): {:?}"
             );
         };
+        // If `inputs.arg.ty` is a generic and the appropriate concrete type was provided in the
+        // attributes, use the concrete type as the type of the generated FFI.
+        let concrete_type = inputs
+            .fn_attributes
+            .generics
+            .get_key_value(&*inputs.arg.ty)
+            .map_or(*inputs.arg.ty.clone(), |(_, value)| value.clone());
         let native_type_data = TypeFFI::from(TypeAttributes::initial(
-            *inputs.arg.ty.clone(),
-            inputs.raw_types,
-            inputs.self_type,
+            concrete_type,
+            inputs.fn_attributes.raw_types.clone(),
+            Some(inputs.fn_attributes.extend_type.clone()),
         ));
         Self {
             name,

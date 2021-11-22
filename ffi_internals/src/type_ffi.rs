@@ -340,7 +340,7 @@ impl TypeFFI {
     /// `*mut T`. This is mostly for the sake of the generated initializer, which takes mutable
     /// pointers to indicate that the pointer will be consumed.
     ///
-    /// When `mutable` is `false`, if `self is exposed as a reference type, this will produce a
+    /// When `mutable` is `false`, if `self` is exposed as a reference type, this will produce a
     /// token stream like `*const T`.
     ///
     #[must_use]

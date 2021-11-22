@@ -16,55 +16,49 @@ jobs:
         with:
           ssh-private-key: |
             ${{ secrets.MAC_OS_BUILD_AGENT_PRIVATE_KEY }}
-            ${{ secrets.SSH_PRIVATE_KEY }}
       - uses: actions/checkout@v2
-      - uses: actions/cache@v2
+      - name: Cache the Rust things
+        uses: Swatinem/rust-cache@842ef286fff290e445b90b4002cc9807c3669641
+      - name: Install cargo-sweep
+        uses: actions-rs/install@v0.1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
-            ${{ runner.os }}-cargo
+          crate: cargo-sweep
+          version: latest
+          use-tool-cache: true
+      - name: Inventory ./target contents
+        run: cargo sweep -s
       - name: cargo test all
         uses: actions-rs/cargo@v1
         with:
           command: test
           args: --workspace --all-features
+      - name: Remove unused contents from ./target
+        run: cargo sweep -f
 
   test_ios:
     name: Test (x86_64-apple-ios)
     runs-on: macos-10.15
-    env:
-      DYLD_ROOT_PATH: '/Applications/Xcode.app/Contents/Developer/Applications/Simulator.app'
     steps:
       - name: Setup SSH
         uses: webfactory/ssh-agent@ee29fafb6aa450493bac9136b346e51ea60a8b5e
         with:
           ssh-private-key: |
             ${{ secrets.MAC_OS_BUILD_AGENT_PRIVATE_KEY }}
-            ${{ secrets.SSH_PRIVATE_KEY }}
       - uses: actions/checkout@v2
-      - uses: actions/cache@v2
+      - name: Cache the Rust things
+        uses: Swatinem/rust-cache@842ef286fff290e445b90b4002cc9807c3669641
+      - name: Install cargo-sweep
+        uses: actions-rs/install@v0.1
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-${{ hashFiles('Cargo.toml') }}
-            ${{ runner.os }}-cargo
-      - uses: actions-rs/toolchain@v1
-        with:
-          profile: minimal
-          toolchain: stable
-          target: x86_64-apple-ios
-          override: true
-      - name: cargo test
+          crate: cargo-sweep
+          version: latest
+          use-tool-cache: true
+      - name: Inventory ./target contents
+        run: cargo sweep -s
+      - name: cargo test all
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: --workspace --all-features --tests --target x86_64-apple-ios
+          args: --workspace --all-features
+      - name: Remove unused contents from ./target
+        run: cargo sweep -f

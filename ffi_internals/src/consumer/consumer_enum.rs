@@ -2,154 +2,44 @@
 //! Generates boilerplate code for using a repr(C) enum in the consumer's language.
 //!
 
-/// Contains the data required generate consumer support for a repr(C) enum.
-///
-pub struct ConsumerEnum {
-    /// The name of the enum type.
-    pub type_name: String,
+use syn::Ident;
+
+mod complex_enum;
+mod repr_c_enum;
+
+pub use complex_enum::ComplexConsumerEnum;
+pub use repr_c_enum::ReprCConsumerEnum;
+
+trait ConsumerEnumType {
+    fn type_name_ident(&self) -> &Ident;
 }
 
-impl ConsumerEnum {
+trait CommonConsumerNames {
+    fn array_name(&self) -> String;
+    fn array_init_fn_name(&self) -> String;
+    fn array_free_fn_name(&self) -> String;
+    fn option_init_fn_name(&self) -> String;
+    fn option_free_fn_name(&self) -> String;
+}
+
+impl<T: ConsumerEnumType> CommonConsumerNames for T {
     fn array_name(&self) -> String {
-        format!("FFIArray{}", self.type_name)
+        format!("FFIArray{}", self.type_name_ident())
     }
 
-    fn array_init(&self) -> String {
-        format!("ffi_array_{}_init", self.type_name)
+    fn array_init_fn_name(&self) -> String {
+        format!("ffi_array_{}_init", self.type_name_ident())
     }
 
-    fn array_free(&self) -> String {
-        format!("ffi_array_{}_free", self.type_name)
+    fn array_free_fn_name(&self) -> String {
+        format!("ffi_array_{}_free", self.type_name_ident())
     }
 
-    fn option_init(&self) -> String {
-        format!("option_{}_init", self.type_name)
+    fn option_init_fn_name(&self) -> String {
+        format!("option_{}_init", self.type_name_ident())
     }
 
-    fn option_free(&self) -> String {
-        format!("option_{}_free", self.type_name)
-    }
-
-    fn array_conformance(&self) -> String {
-        format!(
-            "
-extension {}: FFIArray {{
-    public typealias Value = {}
-
-    public static func from(ptr: UnsafePointer<Value>?, len: Int) -> Self {{
-        {}(ptr, len)
-    }}
-
-    public static func free(_ array: Self) {{
-        {}(array)
-    }}
-}}
-",
-            self.array_name(),
-            self.type_name,
-            self.array_init(),
-            self.array_free()
-        )
-    }
-
-    fn option_conformance(&self) -> String {
-        format!(
-            "
-public extension Optional where Wrapped == {} {{
-    func clone() -> UnsafeMutablePointer<{}>? {{
-        switch self {{
-        case let .some(value):
-            let v = value.clone()
-            return UnsafeMutablePointer(mutating: {}(true, v))
-        case .none:
-            return nil
-        }}
-    }}
-
-    func borrowReference() -> UnsafeMutablePointer<{}>? {{
-        switch self {{
-        case let .some(value):
-            let v = value.borrowReference()
-            return UnsafeMutablePointer(mutating: {}(true, v))
-        case .none:
-            return nil
-        }}
-    }}
-    
-    static func fromRust(_ ptr: UnsafePointer<{}>?) -> Self {{
-        guard let ptr = ptr else {{
-            return .none
-        }}
-        let value = Wrapped.fromRust(ptr.pointee)
-        free(ptr)
-        return value
-    }}
-    
-    static func free(_ option: UnsafePointer<{}>?) {{
-        {}(option)
-    }}
-}}
-",
-            self.type_name,
-            self.type_name,
-            self.option_init(),
-            self.type_name,
-            self.option_init(),
-            self.type_name,
-            self.type_name,
-            self.option_free(),
-        )
-    }
-
-    /// Linking between the Rust and consumer base types.
-    ///
-    fn native_data_impl(&self) -> String {
-        format!(
-            "
-extension {}: NativeData {{
-    public typealias ForeignType = {}
-
-    public func clone() -> ForeignType {{
-        return self
-    }}
-
-    public func borrowReference() -> ForeignType {{
-        return self
-    }}
-
-    public static func fromRust(_ foreignObject: ForeignType) -> Self {{
-        return foreignObject
-    }}
-}}
-",
-            self.type_name, self.type_name
-        )
-    }
-
-    /// Linking between the Rust and consumer array types.
-    ///
-    fn consumer_array_type(&self) -> String {
-        format!(
-            "
-extension {}: NativeArrayData {{
-    public typealias FFIArrayType = {}
-}}
-",
-            self.type_name,
-            self.array_name()
-        )
-    }
-}
-
-impl From<ConsumerEnum> for String {
-    fn from(consumer: ConsumerEnum) -> Self {
-        [
-            super::header_and_imports(&[]),
-            consumer.native_data_impl(),
-            consumer.array_conformance(),
-            consumer.consumer_array_type(),
-            consumer.option_conformance(),
-        ]
-        .join("")
+    fn option_free_fn_name(&self) -> String {
+        format!("option_{}_free", self.type_name_ident())
     }
 }

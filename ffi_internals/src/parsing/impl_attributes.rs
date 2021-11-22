@@ -3,18 +3,43 @@
 //! attributes.
 //!
 
-use proc_macro_error::abort;
-use syn::{spanned::Spanned, Ident, Meta, NestedMeta, Path};
+use proc_macro_error::{abort, OptionExt, ResultExt};
+use std::collections::HashMap;
+use syn::{spanned::Spanned, Ident, Meta, NestedMeta, Path, Type, TypePath};
 
 /// Impl-level FFI helper attributes.
 ///
 pub struct ImplAttributes {
     /// Any imports that need to be included in the generated FFI module.
+    ///
     pub ffi_imports: Vec<Path>,
+
     /// Any imports the consumer will need in order to support the implementation.
+    ///
     pub consumer_imports: Vec<Path>,
+
     /// Any types in this function that should be treated as raw types.
+    ///
     pub raw_types: Vec<Ident>,
+
+    /// A description of this impl, to be used in generating a unique name for the type and impl.
+    ///
+    /// When operating on a trait impl, we can use the trait name, so this is unnecessary. However,
+    /// when we want to operate on something like `impl SomeType { ... }`, we need a way to uniquely
+    /// identify that impl (otherwise the file for this would collide with the type definition file
+    /// and/or other impls for the same type).
+    ///
+    pub description: Option<Ident>,
+
+    /// A hashmap whose keys are `Type`s for the generics used throughout this impl and whose
+    /// values are `Type`s for the concrete types to use in place of the generic for FFI.
+    ///
+    /// # Limitations
+    ///
+    /// This breaks down if an impl contains multiple generic functions that use the same generic
+    /// parameter: https://github.com/agrian-inc/ffi_common/issues/27.
+    ///
+    pub generics: HashMap<Type, Type>,
 }
 
 impl From<syn::AttributeArgs> for ImplAttributes {
@@ -22,6 +47,8 @@ impl From<syn::AttributeArgs> for ImplAttributes {
         let mut ffi_imports = vec![];
         let mut consumer_imports = vec![];
         let mut raw_types = vec![];
+        let mut description: Option<Ident> = None;
+        let mut generics = HashMap::<Type, Type>::new();
         for arg in &args {
             if let NestedMeta::Meta(m) = arg {
                 let paths: Vec<Path> = match m {
@@ -53,17 +80,60 @@ impl From<syn::AttributeArgs> for ImplAttributes {
                         .filter_map(syn::Path::get_ident)
                         .cloned()
                         .collect();
+                } else if m.path().is_ident("description") {
+                    if description.is_some() {
+                        abort!(m.span(), "Duplicate `description` attribute defined for a single call. This attribute must be set once at most.")
+                    }
+                    if let Meta::List(l) = m {
+                        let nested = l.nested.first()
+                            .expect_or_abort("Attribute `description` missing nested value. Use it like `description(\"some description\"");
+                        if let NestedMeta::Lit(syn::Lit::Str(lit)) = nested {
+                            description = Some(quote::format_ident!("{}", lit.value()));
+                        }
+                    }
+                } else if m.path().is_ident("generic") {
+                    if let Meta::List(l) = m {
+                        generics = l.nested.iter().fold(generics, |mut acc, n| {
+                            if let NestedMeta::Meta(nested_meta) = n {
+                                let generic = Type::Path(TypePath {
+                                    qself: None,
+                                    path: nested_meta.path().clone(),
+                                });
+                                if let Meta::NameValue(name_value) = nested_meta {
+                                    if let syn::Lit::Str(lit) = name_value.lit.clone() {
+                                        let ty: Type =
+                                            syn::parse_str(&lit.value()).unwrap_or_abort();
+                                        if acc.insert(generic.clone(), ty).is_some() {
+                                            abort!(
+                                                m.span(),
+                                                "Multiple definitions for generic {:?} found.",
+                                                generic
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                            acc
+                        });
+                    }
                 } else {
-                    abort!(m.span(), "Unsupported ffi attribute -- ")
+                    abort!(
+                        m.span(),
+                        "Unsupported ffi attribute {:?} -- expected `ffi_imports`, \
+`consumer_imports`, `raw_types`, `description`, or `generic`, ",
+                        m.path()
+                    )
                 }
             } else {
-                abort!(arg.span(), "Unsupported ffi attribute.")
+                abort!(arg.span(), "Unsupported ffi attribute -- {:?}.", arg)
             }
         }
         Self {
             ffi_imports,
             consumer_imports,
             raw_types,
+            description,
+            generics,
         }
     }
 }
