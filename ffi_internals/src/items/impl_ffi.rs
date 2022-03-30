@@ -75,8 +75,10 @@ impl From<ImplInputs> for ImplFFI {
                 }
                 ImplItem::Const(_)
                 | ImplItem::Macro(_)
-                | ImplItem::Verbatim(_)
-                | ImplItem::__TestExhaustive(_) => acc,
+                | ImplItem::Verbatim(_) => acc,
+                // Eventually this ought to do as suggested in https://github.com/dtolnay/syn/pull/1067, but the non_exhaustive_omitted_patterns lint
+                // isn't stable yet: https://github.com/rust-lang/rust/issues/89554.
+                _ => acc,
             });
 
         let fns = methods
