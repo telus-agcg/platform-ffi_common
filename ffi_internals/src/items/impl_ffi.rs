@@ -73,10 +73,12 @@ impl From<ImplInputs> for ImplFFI {
                     let _ignored = acc.0.insert(alias, item.ty.clone());
                     acc
                 }
-                ImplItem::Const(_)
-                | ImplItem::Macro(_)
-                | ImplItem::Verbatim(_)
-                | ImplItem::__TestExhaustive(_) => acc,
+                // Eventually this ought to do as suggested in https://github.com/dtolnay/syn/pull/1067, but the non_exhaustive_omitted_patterns lint
+                // isn't stable yet: https://github.com/rust-lang/rust/issues/89554.
+                // ImplItem::Const(_)
+                // | ImplItem::Macro(_)
+                // | ImplItem::Verbatim(_) => acc,
+                _ => acc,
             });
 
         let fns = methods
