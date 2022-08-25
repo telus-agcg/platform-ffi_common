@@ -273,11 +273,10 @@ fn build_imports(paths: &[syn::Path]) -> Vec<String> {
 fn header_and_imports(additional_imports: &[syn::Path]) -> String {
     let mut output = HEADER.to_string();
     output.push_str("\n\n");
-    output.push_str(
-        &option_env!("FFI_COMMON_FRAMEWORK")
-            .map(|f| format!("import {}", f))
-            .unwrap_or_default(),
-    );
+
+    if let Some(common_framework) = option_env!("FFI_COMMON_FRAMEWORK") {
+        output.push_str(&format!("import {}", common_framework));
+    }
 
     if !additional_imports.is_empty() {
         output.push('\n');
