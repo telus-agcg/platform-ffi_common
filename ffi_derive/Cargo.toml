@@ -1,6 +1,6 @@
 [package]
 name = "ffi_derive"
-version = "0.7.0"
+version = "0.7.3"
 authors = ["Nicholas Smillie <nicholas@agrian.com>"]
 edition = "2018"
 publish = ["agrian-registry"]
@@ -10,9 +10,9 @@ repository = "https://github.com/agrian-inc/ffi_common"
 proc-macro = true
 
 [dependencies]
-ffi_internals = { version = "0.7.0", registry = "agrian-registry" }
+ffi_internals = { version = "0.7.3", registry = "agrian-registry" }
 proc-macro2 = "1.0"
 proc-macro-error = "1.0"
 
 [build-dependencies]
-ffi_internals = { version = "0.7.0", registry = "agrian-registry" }
+ffi_internals = { version = "0.7.3", registry = "agrian-registry" }

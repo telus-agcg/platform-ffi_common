@@ -19,7 +19,6 @@ pub(crate) enum FieldSource<'a> {
     Struct,
     Enum {
         variant_ident: &'a Ident,
-        variant_fields_len: usize,
         other_variants: Vec<(Ident, usize)>,
     },
 }
@@ -47,10 +46,6 @@ pub struct FieldFFI<'a> {
     /// The FFI helper attribute annotations on this field.
     ///
     pub attributes: FieldAttributes,
-
-    /// Documentation comments on this field.
-    ///
-    pub(crate) doc_comments: Vec<Attribute>,
 }
 
 impl<'a> FieldFFI<'a> {
@@ -67,7 +62,6 @@ impl<'a> FieldFFI<'a> {
         getter_name.push('_');
         if let FieldSource::Enum {
             variant_ident,
-            variant_fields_len: _,
             other_variants: _,
         } = &self.field_source
         {
@@ -115,7 +109,6 @@ impl<'a> FieldFFI<'a> {
             }
             FieldSource::Enum {
                 variant_ident,
-                variant_fields_len: _,
                 other_variants,
             } => {
                 if other_variants.iter().any(|v| &&v.0 == variant_ident) {
@@ -188,7 +181,6 @@ impl<'a> FieldFFI<'a> {
             }
             FieldSource::Enum {
                 variant_ident: _,
-                variant_fields_len: _,
                 other_variants: _,
             } => quote!(#conversion,),
         }
@@ -320,7 +312,6 @@ pub fn fields_for_variant<'a>(
             fields,
             &FieldSource::Enum {
                 variant_ident,
-                variant_fields_len: fields.named.len(),
                 other_variants,
             },
             type_name,
@@ -330,7 +321,6 @@ pub fn fields_for_variant<'a>(
             fields,
             &FieldSource::Enum {
                 variant_ident,
-                variant_fields_len: fields.unnamed.len(),
                 other_variants,
             },
             type_name,
@@ -384,7 +374,6 @@ impl<'a> From<FieldInputs<'a>> for FieldFFI<'a> {
             field_source: inputs.field_source,
             native_type_data,
             attributes,
-            doc_comments: parsing::clone_doc_comments(inputs.field_attrs),
         }
     }
 }

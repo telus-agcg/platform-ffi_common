@@ -369,10 +369,6 @@ pub(crate) struct FnParameterFFI {
     /// The type information for generating an FFI for this parameter.
     ///
     pub(crate) native_type_data: TypeFFI,
-
-    /// The original type of the fn parameter.
-    ///
-    pub(crate) original_type: Type,
 }
 
 /// Representes the inputs for building a `FnParameterFFI`.
@@ -412,7 +408,6 @@ impl<'a> From<FnParameterFFIInputs<'a>> for FnParameterFFI {
         Self {
             name,
             native_type_data,
-            original_type: *inputs.arg.ty.clone(),
         }
     }
 }

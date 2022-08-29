@@ -485,7 +485,6 @@ mod tests {
                             field_name: FieldIdent::UnnamedField(0),
                             field_source: FieldSource::Enum {
                                 variant_ident: variant_1,
-                                variant_fields_len: 1,
                                 other_variants: vec![(variant_2.clone(), 1)],
                             },
                             native_type_data: TypeFFI {
@@ -500,7 +499,6 @@ mod tests {
                                 expose_as: None,
                                 raw: false,
                             },
-                            doc_comments: vec![],
                         }],
                         doc_comments: vec![],
                     },
@@ -511,7 +509,6 @@ mod tests {
                             field_name: FieldIdent::UnnamedField(0),
                             field_source: FieldSource::Enum {
                                 variant_ident: variant_2,
-                                variant_fields_len: 1,
                                 other_variants: vec![(variant_1.clone(), 1)],
                             },
                             native_type_data: TypeFFI {
@@ -526,7 +523,6 @@ mod tests {
                                 expose_as: None,
                                 raw: false,
                             },
-                            doc_comments: vec![],
                         }],
                         doc_comments: vec![],
                     },
